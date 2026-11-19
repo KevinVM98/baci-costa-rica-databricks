@@ -137,3 +137,16 @@ Para cambiar período o filtros, editá `baci_cr/00_configuracion.py`, validá y
 - [Validar, desplegar y ejecutar un Job con bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial).
 - [Autenticación de Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/authentication).
 - [Modo de desarrollo y concurrencia](https://docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes).
+
+## Dashboard interactivo
+
+Dashboard de importaciones de Costa Rica para 2016–2023, con
+evolución anual, concentración de proveedores y países exportadores
+alternativos. Incluye filtros por año y código de producto.
+
+- [Guía de uso y recuperación](docs/DASHBOARD.md)
+- [Configuración exportada del dashboard](dashboards/)
+
+![Caso verificado: producto 230330 en 2023](docs/images/caso_2023_230330.png)
+
+Captura tomada durante la configuración y comprobación del dashboard.
