@@ -1,0 +1,679 @@
+{
+  "datasets": [
+    {
+      "name": "2b07dd61",
+      "displayName": "resumen_anual_cr",
+      "queryLines": [
+        "WITH base AS (\r\n",
+        "    SELECT\r\n",
+        "        anio,\r\n",
+        "        total_importado_usd,\r\n",
+        "        CASE\r\n",
+        "            WHEN participacion_principal_pct >= 90\r\n",
+        "             AND total_importado_usd >= 1000000\r\n",
+        "            THEN 1\r\n",
+        "            ELSE 0\r\n",
+        "        END AS seleccionado\r\n",
+        "    FROM workspace.baci.concentracion_importaciones_cr\r\n",
+        "    WHERE anio BETWEEN 2016 AND 2023\r\n",
+        "      AND clasificacion = 'HS92'\r\n",
+        "      AND version_baci = '202501'\r\n",
+        "),\r\n",
+        "resumen AS (\r\n",
+        "    SELECT\r\n",
+        "        anio,\r\n",
+        "        COUNT(*) AS productos_importados,\r\n",
+        "        SUM(total_importado_usd) AS importaciones_totales_usd,\r\n",
+        "        SUM(seleccionado) AS productos_seleccionados,\r\n",
+        "        SUM(\r\n",
+        "            CASE\r\n",
+        "                WHEN seleccionado = 1 THEN total_importado_usd\r\n",
+        "                ELSE 0\r\n",
+        "            END\r\n",
+        "        ) AS importaciones_seleccionadas_usd\r\n",
+        "    FROM base\r\n",
+        "    GROUP BY anio\r\n",
+        ")\r\n",
+        "SELECT\r\n",
+        "    anio,\r\n",
+        "    productos_importados,\r\n",
+        "    ROUND(importaciones_totales_usd, 2)\r\n",
+        "        AS importaciones_totales_usd,\r\n",
+        "    productos_seleccionados,\r\n",
+        "    ROUND(importaciones_seleccionadas_usd, 2)\r\n",
+        "        AS importaciones_seleccionadas_usd,\r\n",
+        "    CASE\r\n",
+        "        WHEN importaciones_totales_usd > 0\r\n",
+        "        THEN ROUND(\r\n",
+        "            100.0 * importaciones_seleccionadas_usd\r\n",
+        "            / importaciones_totales_usd,\r\n",
+        "            2\r\n",
+        "        )\r\n",
+        "    END AS participacion_valor_seleccionado_pct\r\n",
+        "FROM resumen\r\n",
+        "ORDER BY anio;"
+      ]
+    },
+    {
+      "name": "ad0d9d1a",
+      "displayName": "productos_seleccionados_cr",
+      "queryLines": [
+        "SELECT\r\n",
+        "    anio,\r\n",
+        "    codigo_producto,\r\n",
+        "    producto,\r\n",
+        "    exportador_principal,\r\n",
+        "    ROUND(participacion_principal_pct, 2)\r\n",
+        "        AS participacion_principal_pct,\r\n",
+        "    total_importado_usd,\r\n",
+        "    paises_exportadores\r\n",
+        "FROM workspace.baci.concentracion_importaciones_cr\r\n",
+        "WHERE anio BETWEEN 2016 AND 2023\r\n",
+        "  AND clasificacion = 'HS92'\r\n",
+        "  AND version_baci = '202501'\r\n",
+        "  AND participacion_principal_pct >= 90\r\n",
+        "  AND total_importado_usd >= 1000000\r\n",
+        "ORDER BY\r\n",
+        "    anio DESC,\r\n",
+        "    total_importado_usd DESC,\r\n",
+        "    codigo_producto;"
+      ]
+    },
+    {
+      "name": "0c9903e0",
+      "displayName": "alternativas_cr",
+      "queryLines": [
+        "SELECT\r\n",
+        "    anio,\r\n",
+        "    codigo_producto,\r\n",
+        "    producto,\r\n",
+        "    exportador_principal,\r\n",
+        "    posicion_alternativa,\r\n",
+        "    exportador_alternativo,\r\n",
+        "    ROUND(exportaciones_mundiales_usd, 2)\r\n",
+        "        AS exportaciones_mundiales_usd,\r\n",
+        "    destinos,\r\n",
+        "    ROUND(exportaciones_a_cr_usd, 2)\r\n",
+        "        AS exportaciones_a_cr_usd\r\n",
+        "FROM workspace.baci.alternativas_importaciones_cr\r\n",
+        "WHERE anio BETWEEN 2016 AND 2023\r\n",
+        "  AND clasificacion = 'HS92'\r\n",
+        "  AND version_baci = '202501'\r\n",
+        "ORDER BY\r\n",
+        "    anio DESC,\r\n",
+        "    codigo_producto,\r\n",
+        "    posicion_alternativa;"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "96bcd9a0",
+      "displayName": "Resumen anual",
+      "layout": [
+        {
+          "widget": {
+            "name": "importaciones-anuales-de-costa-rica-usd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "2b07dd61",
+                  "fields": [
+                    {
+                      "name": "anio",
+                      "expression": "`anio`"
+                    },
+                    {
+                      "name": "sum(importaciones_totales_usd)",
+                      "expression": "SUM(`importaciones_totales_usd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Importaciones anuales de Costa Rica (USD)",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "anio",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(importaciones_totales_usd)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 11
+          }
+        },
+        {
+          "widget": {
+            "name": "d3760bae",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "2b07dd61",
+                  "fields": [
+                    {
+                      "name": "anio",
+                      "expression": "`anio`"
+                    },
+                    {
+                      "name": "avg(participacion_valor_seleccionado_pct)",
+                      "expression": "AVG(`participacion_valor_seleccionado_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "```\nImportaciones de productos seleccionados (% del total)\n```",
+                  "fields": []
+                }
+              },
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "anio",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "avg(participacion_valor_seleccionado_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 12,
+            "height": 11
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "d4c09be9",
+      "displayName": "Productos y alternativas",
+      "layout": [
+        {
+          "widget": {
+            "name": "productos-alta-concentracion-importaciones",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ad0d9d1a",
+                  "fields": [
+                    {
+                      "name": "anio",
+                      "expression": "`anio`"
+                    },
+                    {
+                      "name": "codigo_producto",
+                      "expression": "`codigo_producto`"
+                    },
+                    {
+                      "name": "producto",
+                      "expression": "`producto`"
+                    },
+                    {
+                      "name": "exportador_principal",
+                      "expression": "`exportador_principal`"
+                    },
+                    {
+                      "name": "participacion_principal_pct",
+                      "expression": "`participacion_principal_pct`"
+                    },
+                    {
+                      "name": "total_importado_usd",
+                      "expression": "`total_importado_usd`"
+                    },
+                    {
+                      "name": "paises_exportadores",
+                      "expression": "`paises_exportadores`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "Productos con alta concentración de importaciones",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "anio"
+                  },
+                  {
+                    "fieldName": "codigo_producto"
+                  },
+                  {
+                    "fieldName": "producto"
+                  },
+                  {
+                    "fieldName": "exportador_principal"
+                  },
+                  {
+                    "fieldName": "participacion_principal_pct"
+                  },
+                  {
+                    "fieldName": "total_importado_usd"
+                  },
+                  {
+                    "fieldName": "paises_exportadores"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "ano",
+            "queries": [
+              {
+                "name": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e4244d561a9bb7b709632ce2b29b_anio",
+                "query": {
+                  "datasetName": "ad0d9d1a",
+                  "fields": [
+                    {
+                      "name": "anio",
+                      "expression": "`anio`"
+                    },
+                    {
+                      "name": "anio_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e451ac371ad2bd023a9bd6bce26a_anio",
+                "query": {
+                  "datasetName": "0c9903e0",
+                  "fields": [
+                    {
+                      "name": "anio",
+                      "expression": "`anio`"
+                    },
+                    {
+                      "name": "anio_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "INTEGER",
+                    "values": [
+                      {
+                        "value": "2023"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "**Año**",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "anio",
+                    "queryName": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e4244d561a9bb7b709632ce2b29b_anio"
+                  },
+                  {
+                    "fieldName": "anio",
+                    "queryName": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e451ac371ad2bd023a9bd6bce26a_anio"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "paises-exportadores-alternativos",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "0c9903e0",
+                  "fields": [
+                    {
+                      "name": "posicion_alternativa",
+                      "expression": "`posicion_alternativa`"
+                    },
+                    {
+                      "name": "exportador_alternativo",
+                      "expression": "`exportador_alternativo`"
+                    },
+                    {
+                      "name": "exportaciones_mundiales_usd",
+                      "expression": "`exportaciones_mundiales_usd`"
+                    },
+                    {
+                      "name": "destinos",
+                      "expression": "`destinos`"
+                    },
+                    {
+                      "name": "anio",
+                      "expression": "`anio`"
+                    },
+                    {
+                      "name": "exportaciones_a_cr_usd",
+                      "expression": "`exportaciones_a_cr_usd`"
+                    },
+                    {
+                      "name": "codigo_producto",
+                      "expression": "`codigo_producto`"
+                    },
+                    {
+                      "name": "exportador_principal",
+                      "expression": "`exportador_principal`"
+                    },
+                    {
+                      "name": "producto",
+                      "expression": "`producto`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "ASC",
+                      "expression": "`codigo_producto`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "**Países exportadores alternativos**",
+                  "fields": []
+                }
+              },
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "posicion_alternativa"
+                  },
+                  {
+                    "fieldName": "exportador_alternativo"
+                  },
+                  {
+                    "fieldName": "exportaciones_mundiales_usd"
+                  },
+                  {
+                    "fieldName": "destinos"
+                  },
+                  {
+                    "fieldName": "anio"
+                  },
+                  {
+                    "fieldName": "exportaciones_a_cr_usd"
+                  },
+                  {
+                    "fieldName": "codigo_producto"
+                  },
+                  {
+                    "fieldName": "exportador_principal"
+                  },
+                  {
+                    "fieldName": "producto"
+                  }
+                ],
+                "rowOrder": [
+                  {
+                    "by": "column",
+                    "field": {
+                      "index": 6
+                    }
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "producto-codigo-hs",
+            "queries": [
+              {
+                "name": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e4244d561a9bb7b709632ce2b29b_codigo_producto",
+                "query": {
+                  "datasetName": "ad0d9d1a",
+                  "fields": [
+                    {
+                      "name": "codigo_producto",
+                      "expression": "`codigo_producto`"
+                    },
+                    {
+                      "name": "codigo_producto_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e451ac371ad2bd023a9bd6bce26a_codigo_producto",
+                "query": {
+                  "datasetName": "0c9903e0",
+                  "fields": [
+                    {
+                      "name": "codigo_producto",
+                      "expression": "`codigo_producto`"
+                    },
+                    {
+                      "name": "codigo_producto_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "230330"
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": {
+                  "value": "\tProducto (código HS)",
+                  "fields": []
+                }
+              },
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "codigo_producto",
+                    "queryName": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e4244d561a9bb7b709632ce2b29b_codigo_producto"
+                  },
+                  {
+                    "fieldName": "codigo_producto",
+                    "queryName": "dashboards/01f1e418fae91cd1b197e8b2b5ff1a27/datasets/01f1e451ac371ad2bd023a9bd6bce26a_codigo_producto"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 5,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "9848d38c",
+            "spec": {
+              "widgetType": "text",
+              "version": 1,
+              "encodings": {
+                "text": {
+                  "lines": [
+                    "**Criterios del análisis**\n",
+                    "\n",
+                    "Fuente: BACI, clasificación HS92, versión 202501. Período: 2016–2023.\n",
+                    "\n",
+                    "Se seleccionan productos con importaciones anuales de Costa Rica de al menos **USD 1 millón**, donde un mismo país aporta **al menos el 90 % del valor importado**.\n",
+                    "\n",
+                    "Para cada producto y año se muestran hasta tres países alternativos, ordenados por sus exportaciones mundiales de ese producto. Se excluyen Costa Rica y el proveedor principal.\n",
+                    "\n",
+                    "Las alternativas reflejan comercio histórico; su viabilidad comercial requiere una evaluación adicional."
+                  ],
+                  "fields": []
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 12,
+            "height": 4
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "1ada035c",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "81bdb89c",
+            "spec": {
+              "encodings": {
+                "fields": []
+              },
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "frame": {
+                "showTitle": true
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
