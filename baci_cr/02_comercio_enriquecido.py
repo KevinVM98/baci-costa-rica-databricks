@@ -4,6 +4,8 @@
 # MAGIC Lee los CSV anuales con un esquema explícito, valida los campos requeridos y agrega nombres de países y productos mediante tres uniones izquierdas con catálogos pequeños.
 # MAGIC
 # MAGIC Mantiene todos los flujos globales del período. La unidad es año–exportador–importador–producto. Convierte miles de USD a USD una sola vez. Conserva nulos en toneladas. Al ejecutar la etapa completa, **reemplaza** `comercio_enriquecido` con el período configurado.
+# MAGIC
+# MAGIC El catálogo se lee como UTF-8. Algunos nombres de países contienen texto UTF-8 que fue interpretado como Latin-1 antes de guardarse en el CSV. Se revierte una capa de esa conversión al preparar el catálogo, con decodificación estricta y sin modificar los archivos originales. Los nombres corregidos se usan tanto para exportadores como para importadores.
 
 # COMMAND ----------
 # MAGIC %run ./00_configuracion
@@ -51,15 +53,76 @@ df_comercio = df_comercio.withColumn("k", F.lpad(F.trim(F.col("k")), 6, "0"))
 
 # COMMAND ----------
 
+def normalizar_nombre_pais(nombre):
+    """Revertir una capa reconocible de UTF-8 interpretado como Latin-1."""
+    import re
+
+    if nombre is None:
+        return None
+    if "\ufffd" in nombre:
+        raise ValueError(
+            f"El nombre contiene un carácter de reemplazo y requiere revisión: {nombre!r}"
+        )
+
+    # Secuencias de bytes UTF-8 representadas erróneamente como caracteres Latin-1.
+    # Una tilde válida aislada (por ejemplo, ü en Türkiye) no coincide con ellas.
+    patron = (
+        r"[\u00c2-\u00df][\u0080-\u00bf]"
+        r"|[\u00e0-\u00ef][\u0080-\u00bf]{2}"
+        r"|[\u00f0-\u00f4][\u0080-\u00bf]{3}"
+    )
+    if not re.search(patron, nombre):
+        return nombre
+
+    try:
+        corregido = nombre.encode("latin-1", errors="strict").decode(
+            "utf-8", errors="strict"
+        )
+    except UnicodeError as error:
+        raise ValueError(
+            f"No se pudo reparar el nombre sin pérdida de caracteres: {nombre!r}"
+        ) from error
+
+    if "\ufffd" in corregido or re.search(patron, corregido):
+        raise ValueError(
+            f"El nombre sigue mostrando codificación dañada y requiere revisión: {nombre!r}"
+        )
+    return corregido
+
+
 opciones_catalogos = {
     "header": "true", "escape": '"', "multiLine": "true",
-    "nullValue": "", "enforceSchema": "false", "mode": "FAILFAST"
+    "nullValue": "", "enforceSchema": "false", "mode": "FAILFAST",
+    "encoding": "UTF-8"
 }
 df_paises = (
     spark.read.options(**opciones_catalogos)
     .schema("country_code INT, country_name STRING, country_iso2 STRING, country_iso3 STRING")
     .csv(RUTA_PAISES)
 )
+
+# Solo se recogen los nombres distintos del catálogo pequeño, no el comercio global.
+# El reemplazo posterior se ejecuta en Spark, sin una UDF de Python.
+correcciones_paises = {}
+for fila in df_paises.select("country_name").distinct().collect():
+    original = fila["country_name"]
+    corregido = normalizar_nombre_pais(original)
+    if corregido != original:
+        correcciones_paises[original] = corregido
+
+if correcciones_paises:
+    df_paises = df_paises.replace(correcciones_paises, subset=["country_name"])
+
+print(f"Nombres de países corregidos: {len(correcciones_paises)}")
+for original, corregido in sorted(correcciones_paises.items()):
+    print(f"  {ascii(original)} -> {corregido}")
+
+# Verificar el catálogo resultante antes de usarlo en las dos uniones de países.
+nombres_sin_normalizar = sum(
+    normalizar_nombre_pais(fila["country_name"]) != fila["country_name"]
+    for fila in df_paises.select("country_name").distinct().collect()
+)
+
 df_productos = (
     spark.read.options(**opciones_catalogos)
     .schema("code STRING, description STRING")
@@ -92,6 +155,7 @@ comprobar_ceros({
     "paises_duplicados": df_paises.groupBy("country_code").count().filter("count > 1").count(),
     "productos_duplicados": df_productos.groupBy("code").count().filter("count > 1").count(),
     "paises_sin_clave_o_nombre": df_paises.filter("country_code IS NULL OR country_name IS NULL").count(),
+    "paises_con_nombres_sin_normalizar": nombres_sin_normalizar,
 })
 
 df_exportadores = df_paises.select(
