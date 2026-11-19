@@ -1,0 +1,22 @@
+# Estado local de Databricks y autenticación
+.databricks/
+.databrickscfg
+.env
+.env.*
+!.env.example
+
+# Entornos y archivos temporales
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+Thumbs.db
+
+# Datos y archivos de distribución: conservarlos fuera del repositorio
+data/
+datos/
+raw/
+*.csv
+*.parquet
+*.zip
