@@ -7,7 +7,7 @@ de entrada y las escrituras Delta permanecen en los notebooks.
 
 ## Cobertura
 
-La suite contiene 59 casos: 30 de catálogos y transformaciones y 29 de entornos.
+La suite contiene 68 casos: 30 de catálogos y transformaciones, 29 de entornos y 9 de comparación dev/prod.
 Los flujos e importes de prueba son sintéticos;
 no constituyen nuevos resultados económicos. Los cuatro nombres con
 codificación dañada reproducen el problema observado en el catálogo BACI.
@@ -21,6 +21,7 @@ codificación dañada reproducen el problema observado en el catálogo BACI.
 | Alternativas | Exclusión de CR y del principal, exportaciones positivas, límite configurable, desempates, ventas previas a CR y ausencia de candidatos. |
 | Entornos | Desarrollo por defecto, rechazo de entornos desconocidos, entradas compartidas, propagación del parámetro en los cinco notebooks y escrituras limitadas al esquema elegido. |
 | Archivos originales | Desarrollo reutiliza archivos sin modificarlos, falla ante archivos faltantes o de tamaño distinto y rechaza la reextracción; prod conserva la extracción. |
+| Auditoría dev/prod | Detecta valores diferentes con conteos iguales, filas duplicadas, nulos y diferencias de esquema; respeta un máximo de ejemplos. |
 
 ## Ejecutar en GitHub Actions
 
@@ -31,7 +32,7 @@ El archivo `.github/workflows/tests.yml` ejecuta **Pruebas BACI** después de ca
 2. Seleccionar la ejecución **Pruebas BACI** correspondiente al commit.
 3. Abrir **Python y PySpark** y revisar el paso **Ejecutar pruebas**.
 
-El resultado esperado es `59 passed` y estado verde. Los registros de Actions
+El resultado esperado es `68 passed` y estado verde. Los registros de Actions
 son la evidencia de cada ejecución y se vinculan al commit comprobado.
 
 GitHub prepara un ejecutor Ubuntu con Python 3.12 y Java 21. Las dependencias
@@ -71,6 +72,10 @@ python3.12 -m venv .venv
 Para usar solo GitHub Actions no hace falta instalar Spark o Java en la PC.
 No instalar `requirements-dev.txt` dentro de Databricks: su entorno de
 ejecución ya proporciona PySpark.
+
+## Comparación opcional dev/prod
+
+Una vez que las tablas analíticas están disponibles en ambos entornos, `baci_cr_auditoria` compara su contenido sin volver a leer el comercio global. Las 9 pruebas nuevas ejercitan la función `comparar_contenido` con datos sintéticos. Véase [AUDITORIA.md](AUDITORIA.md) para ejecutar la comparación real en Databricks; CI no reemplaza esa ejecución.
 
 ## Comprobación posterior en Databricks
 
