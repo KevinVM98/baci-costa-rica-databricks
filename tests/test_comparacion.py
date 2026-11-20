@@ -2,7 +2,7 @@
 
 import pytest
 
-from baci_cr.comparacion import comparar_contenido
+from comparacion import comparar_contenido
 
 
 ESQUEMA = "anio INT, codigo_producto STRING, valor INT"
