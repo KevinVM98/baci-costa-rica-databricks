@@ -13,6 +13,7 @@ La configuración separa las tablas de desarrollo (`workspace.baci_dev`) de las 
 | `databricks.yml` | Define el bundle, el destino `dev` y la carpeta de despliegue del usuario autenticado. |
 | `resources/baci_cr_pipeline.job.yml` | Define las cuatro tareas del Job, sus dependencias y su configuración. |
 | `resources/baci_cr_auditoria.job.yml` | Job separado para comparar desarrollo y producción sin reconstruir tablas. |
+| `resources/baci_cr_monitoreo.job.yml` | Job independiente para guardar el historial de calidad de desarrollo. |
 | `baci_cr/00_configuracion.py` | Contiene período, edición, rutas y filtros analíticos compartidos. |
 | `baci_cr/01_archivos_raw.py` | Verifica los archivos raw y solo reutiliza las copias existentes; no los extrae ni modifica. |
 | `baci_cr/02_comercio_enriquecido.py` | Lee los CSV, valida los catálogos, realiza las uniones y guarda el comercio global. |
@@ -20,6 +21,9 @@ La configuración separa las tablas de desarrollo (`workspace.baci_dev`) de las 
 | `baci_cr/04_validaciones.py` | Comprueba cobertura y coherencia de las tablas analíticas. |
 | `baci_cr/05_consultas_cr.py` | Consulta el resumen anual, productos seleccionados, evolución y alternativas. |
 | `baci_cr/06_comparar_entornos.py` | Auditoría de solo lectura de las dos tablas analíticas de dev y prod. |
+| `baci_cr/07_monitoreo_calidad.py` | Revisa versiones concretas de las tablas analíticas de dev y añade resultados al historial. |
+| `baci_cr/calidad.py` | Reglas compartidas entre la validación 04 y el monitoreo 07. |
+| `baci_cr/monitoreo.py` | Captura de versiones, contexto y persistencia append del historial. |
 | `baci_cr/catalogos.py` | Función compartida para reparar los nombres de países. |
 | `baci_cr/transformaciones.py` | Funciones PySpark de enriquecimiento, concentración y alternativas. |
 | `baci_cr/comparacion.py` | Comparación de DataFrames en ambos sentidos, conservando duplicados. |
@@ -28,15 +32,16 @@ La configuración separa las tablas de desarrollo (`workspace.baci_dev`) de las 
 | `docs/PRUEBAS.md` | Explica la cobertura de las pruebas, CI y la comprobación en Databricks. |
 | `docs/ENTORNOS.md` | Explica la separación de tablas, los insumos compartidos y cómo verificarla. |
 | `docs/AUDITORIA.md` | Cómo ejecutar e interpretar la comparación entre dev y prod. |
+| `docs/MONITOREO.md` | Historial de calidad, estados, límites y consultas SQL. |
 | `docs/VALIDACION.md` | Registra las evidencias observadas y el alcance de la revisión local. |
 
-Los archivos numerados `00`–`05` conservan el formato de notebook fuente de Databricks. El procesamiento de los datos BACI se ejecuta en Databricks; no se ejecutan estos notebooks con `python archivo.py` en la computadora personal. `catalogos.py` y `transformaciones.py` son módulos Python normales que deben mantenerse junto a los notebooks y desplegarse con el bundle.
+Los archivos numerados `00`–`07` conservan el formato de notebook fuente de Databricks. El procesamiento de los datos BACI se ejecuta en Databricks; no se ejecutan estos notebooks con `python archivo.py` en la computadora personal. `catalogos.py`, `transformaciones.py`, `comparacion.py`, `calidad.py` y `monitoreo.py` son módulos Python normales que deben mantenerse junto a los notebooks y desplegarse con el bundle.
 
 ## Pruebas automáticas
 
-La suite incluye 76 casos: 30 para nombres y transformaciones PySpark, 37 para la configuración y protección de entornos y 9 para comparar datos entre desarrollo y producción con Spark local. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
+La suite incluye 108 casos: 30 para nombres y transformaciones PySpark, 40 para configuración y protección de entornos, 9 para comparación dev/prod, 11 para reglas de calidad compartidas y 18 para el historial de monitoreo. Los notebooks `02`, `03`, `04` y `07` importan las mismas funciones que verifican las pruebas.
 
-El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `76 passed`.
+El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `108 passed`.
 
 Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La integración completa se comprueba al desplegar y ejecutar el Job en Databricks. [Consultar las instrucciones de pruebas](docs/PRUEBAS.md).
 
@@ -60,6 +65,27 @@ databricks bundle run -t dev -p BACI baci_cr_auditoria
 ```
 
 Primero ejecutá `databricks bundle validate -t dev -p BACI` y `databricks bundle deploy -t dev -p BACI` para publicar la configuración nueva del Job. El control compara valores, esquema y duplicados en ambas direcciones, sin modificar tablas y sin leer el comercio global. Por defecto falla ante divergencias, incluso si ambos conteos son iguales. [Más detalles y límites de la auditoría](docs/AUDITORIA.md).
+
+## Historial de calidad
+
+El Job independiente `baci_cr_monitoreo` revisa las dos tablas analíticas de desarrollo
+con las mismas reglas de `04_validaciones`. Fija sus versiones Delta y añade a
+`workspace.baci_dev.monitoreo_calidad` seis resultados de reglas y siete métricas
+por revisión, con fecha, identificadores del Job y parámetros. Si una regla falla,
+guarda el diagnóstico antes de marcar la ejecución como fallida.
+
+Después de validar y desplegar el bundle:
+
+```powershell
+databricks bundle run -t dev -p BACI baci_cr_monitoreo
+```
+
+Solo este Job agrega registros al historial; ejecutar el pipeline o la auditoría
+no lo inicia automáticamente. Las tablas analíticas se leen y el historial usa
+append. Los errores técnicos se registran cuando la escritura sigue disponible;
+no se garantiza registro ante cancelación o caída de infraestructura. La comprobación
+real del nuevo Job en Databricks queda pendiente hasta su despliegue y ejecución.
+[Instrucciones, consultas SQL y límites](docs/MONITOREO.md).
 
 ## Datos y preparación del workspace
 
