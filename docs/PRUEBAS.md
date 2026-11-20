@@ -7,7 +7,7 @@ de entrada y las escrituras Delta permanecen en los notebooks.
 
 ## Cobertura
 
-La suite contiene 76 casos: 30 de catálogos y transformaciones, 37 de entornos (incluidos bloqueos dev-only) y 9 de comparación dev/prod.
+La suite contiene 108 casos: 30 de catálogos y transformaciones, 40 de entornos (incluido el notebook 07), 9 de comparación dev/prod, 11 de reglas de calidad y 18 del historial de monitoreo.
 Los flujos e importes de prueba son sintéticos;
 no constituyen nuevos resultados económicos. Los cuatro nombres con
 codificación dañada reproducen el problema observado en el catálogo BACI.
@@ -23,6 +23,24 @@ codificación dañada reproducen el problema observado en el catálogo BACI.
 | Archivos originales | El bundle reutiliza archivos sin modificarlos; rechaza insumos faltantes, tamaños distintos, la reextracción y la activación de prod. |
 | Auditoría dev/prod | Detecta valores diferentes con conteos iguales, filas duplicadas, nulos y diferencias de esquema; respeta un máximo de ejemplos. |
 
+## Calidad y monitoreo
+
+`tests/test_calidad.py` evalúa con Spark local las mismas reglas usadas por 04 y 07:
+vacíos, cobertura, duplicados, rankings, montos y pertenencia a casos válidos.
+La falta de candidatos se conserva como métrica informativa.
+
+`tests/test_monitoreo.py` simula las lecturas por versión y el escritor Delta.
+Comprueba que los diagnósticos se guardan antes de fallar, que un error de escritura
+impide el éxito, que los reintentos conservan registros anteriores y que solo se
+usan destinos fijos de desarrollo. También valida el esquema de los registros con
+Spark real, incluidos errores técnicos con versiones nulas. No escribe Delta ni
+comprueba permisos en CI.
+
+Para verificar únicamente esta nueva integración, desplegar el bundle y ejecutar
+`databricks bundle run -t dev -p BACI baci_cr_monitoreo`. Consultar después el
+historial según [MONITOREO.md](MONITOREO.md). No es necesario reconstruir comercio
+mundial para esa comprobación.
+
 ## Ejecutar en GitHub Actions
 
 El archivo `.github/workflows/tests.yml` ejecuta **Pruebas BACI** después de cada
@@ -32,7 +50,7 @@ El archivo `.github/workflows/tests.yml` ejecuta **Pruebas BACI** después de ca
 2. Seleccionar la ejecución **Pruebas BACI** correspondiente al commit.
 3. Abrir **Python y PySpark** y revisar el paso **Ejecutar pruebas**.
 
-El resultado esperado es `76 passed` y estado verde. Los registros de Actions
+El resultado esperado es `108 passed` y estado verde. Los registros de Actions
 son la evidencia de cada ejecución y se vinculan al commit comprobado.
 
 GitHub prepara un ejecutor Ubuntu con Python 3.12 y Java 21. Las dependencias
@@ -94,7 +112,7 @@ databricks bundle deploy -t dev -p BACI
 databricks bundle run -t dev -p BACI baci_cr_pipeline
 ```
 
-Los dos módulos nuevos deben desplegarse junto a `02` y `03`; no deben
+Los módulos Python compartidos deben desplegarse junto a los notebooks; no deben
 importarse como notebooks. El bundle sincroniza los archivos de la carpeta
 `baci_cr`. Copiar únicamente los notebooks produciría un error de importación.
 
@@ -104,7 +122,7 @@ antes de consultar Spark; la rutina de escritura comprueba además los nombres
 literales de las salidas permitidas. Los insumos se leen de
 `workspace.baci.raw` sin modificarlos.
 El dashboard publicado sigue consultando `workspace.baci`. La guía de
-[entornos](ENTORNOS.md) incluye cómo verificar que sus versiones no cambiaron.
+[entornos](ENTORNOS.md) describe las guardas de escritura y sus límites.
 
 Comprobar `TERMINATED SUCCESS`, los mensajes de destino `workspace.baci_dev`
 y la aprobación de `04_validaciones`. Consultar las tablas de desarrollo con

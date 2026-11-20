@@ -9,6 +9,9 @@ import pytest
 
 
 NOTEBOOKS = Path(__file__).resolve().parents[1] / "baci_cr"
+ENTRADAS_CON_ENTORNO = sorted([
+    *NOTEBOOKS.glob("0[1-5]_*.py"), *NOTEBOOKS.glob("07_*.py"),
+])
 
 
 def cargar_configuracion(**variables):
@@ -38,7 +41,7 @@ def test_entorno_invalido_falla_antes_de_acceder_a_datos(entorno):
         cargar_configuracion(BACI_ENTORNO=entorno)
 
 
-@pytest.mark.parametrize("notebook", sorted(NOTEBOOKS.glob("0[1-5]_*.py")), ids=lambda p: p.stem)
+@pytest.mark.parametrize("notebook", ENTRADAS_CON_ENTORNO, ids=lambda p: p.stem)
 @pytest.mark.parametrize("parametros,esquema", [({}, "baci_dev"), ({"entorno": "dev"}, "baci_dev")])
 def test_cada_entrada_lee_el_parametro_antes_de_cargar_configuracion(notebook, parametros, esquema):
     # Simula el contrato de widgets: un parámetro de la tarea tiene prioridad
@@ -209,7 +212,7 @@ def test_guardar_delta_rechaza_salida_prod_aunque_se_cambie_el_nombre_permitido(
     assert (sentencias, vistas, eliminadas) == ([], [], [])
 
 
-@pytest.mark.parametrize("notebook", sorted(NOTEBOOKS.glob("0[1-5]_*.py")), ids=lambda p: p.stem)
+@pytest.mark.parametrize("notebook", ENTRADAS_CON_ENTORNO, ids=lambda p: p.stem)
 def test_override_prod_en_parametro_del_job_se_rechaza_en_todos_los_notebooks(notebook):
     # Simula un override externo, incluso cuando el widget solo ofrece dev.
     widgets = SimpleNamespace(

@@ -7,6 +7,7 @@
 | Tablas derivadas de desarrollo | `workspace.baci_dev` | Lectura y escritura de las tres tablas |
 | Tablas del dashboard | `workspace.baci` | **Sin escritura** desde los notebooks 01–05 |
 | ZIP y CSV originales | `/Volumes/workspace/baci/raw` | Solo lectura y verificación de tamaños |
+| Historial de calidad | `workspace.baci_dev.monitoreo_calidad` | Append desde el Job independiente de monitoreo |
 | Auditoría | `baci_cr_auditoria` | Lee dos tablas analíticas en cada esquema; no publica resultados |
 
 Los dos esquemas tienen como propietario a la misma identidad personal que ejecuta los
@@ -17,7 +18,7 @@ El propietario puede seguir modificando producción por SQL u otros Jobs.
 
 ## Bloqueo preventivo del bundle de desarrollo
 
-Este repositorio solo despliega el target `dev`. Los notebooks `01`–`05`
+Este repositorio solo despliega el target `dev`. Los notebooks `01`–`05` y `07`
 ofrecen exclusivamente el widget `entorno=dev` y cargan el notebook compartido
 `00_configuracion` antes de leer o escribir tablas.
 
@@ -31,6 +32,12 @@ ofrecen exclusivamente el widget `entorno=dev` y cargan el notebook compartido
   También rechaza `REEXTRAER=True` y un cambio sobrevenido a `prod`.
 - El Job de auditoría `baci_cr_auditoria` mantiene lecturas de ambas tablas
   analíticas en `dev` y `prod`, sin escrituras.
+
+El Job `baci_cr_monitoreo` agrega resultados al historial mediante una rutina
+separada con destino literal y modo append. La lista de tres tablas permitidas
+por `guardar_delta` no se amplía: esa función sigue dedicada a reconstruir las
+salidas del pipeline. El monitoreo lee únicamente las dos tablas analíticas de
+desarrollo. Véase [MONITOREO.md](MONITOREO.md).
 
 El Job histórico creado manualmente en Databricks no forma parte de este bundle
 y **no queda protegido automáticamente**. Tampoco se impiden consultas SQL directas
@@ -46,7 +53,8 @@ databricks bundle deploy -t dev -p BACI
 ```
 
 Desplegar solo actualiza el código y los recursos del bundle; **no inicia una
-reconstrucción** ni modifica las tablas Delta. GitHub Actions comprueba las
+reconstrucción** ni modifica las tablas Delta. Ejecutar posteriormente el Job
+de monitoreo sí crea o agrega filas a su tabla de historial en desarrollo. GitHub Actions comprueba las
 rutas permitidas y el rechazo del entorno de producción con datos sintéticos.
 
 ### Prueba negativa sin procesar 86,7 millones de filas
