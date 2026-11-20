@@ -12,9 +12,9 @@
 # MAGIC
 # MAGIC **Cómo ejecutar:** para reconstruir las tablas, ejecutá 01, 02, 03 y 04 en orden con Serverless. Si ya existen, podés consultar 05 o validar con 04. El Job encadena las cuatro etapas. El README del paquete explica cómo desplegar una copia mediante Databricks CLI.
 # MAGIC
-# MAGIC **Entornos:** el parámetro `entorno=dev` escribe y consulta las tres tablas en `workspace.baci_dev`. `entorno=prod` usa `workspace.baci`, donde consulta el dashboard. El valor inicial es `dev`. Los archivos de entrada se leen de `workspace.baci.raw` en ambos casos; desarrollo solo reutiliza los archivos ya preparados. El esquema de salida se crea al guardar la primera tabla si todavía no existe.
+# MAGIC **Entornos:** este bundle es exclusivo de desarrollo. `entorno=dev` escribe en `workspace.baci_dev`; `entorno=prod` se rechaza antes de acceder a datos, incluso mediante parámetros del Job. El dashboard sigue leyendo `workspace.baci`; los archivos originales se comparten en modo lectura desde `workspace.baci.raw`.
 # MAGIC
-# MAGIC **Escritura:** 02 reemplaza `comercio_enriquecido`; 03 reemplaza concentración y alternativas dentro del entorno seleccionado. Es una reconstrucción completa, no una carga incremental. Cambiar años y reconstruir sustituye el período guardado por el nuevo período seleccionado. Cada tabla se confirma por separado: no hay una transacción conjunta para todo el flujo. Los resultados se consumen después de que 04 termine correctamente.
+# MAGIC **Escritura:** 02 reemplaza `comercio_enriquecido` y 03 reemplaza ambas tablas analíticas únicamente en `workspace.baci_dev`. Una futura publicación en producción requerirá un proceso independiente con revisión y permisos adecuados. Cada tabla se confirma por separado.
 # MAGIC
 # MAGIC **Compute:** importar archivos no procesa los datos. Reconstruir 02 vuelve a leer y escribir los datos globales y consume la cuota de cómputo de Free Edition. Para consultas cotidianas, ejecutá 05 sobre las tablas existentes.
 # MAGIC
@@ -39,11 +39,16 @@ import re
 # Ejecutar 00 por sí solo, en una sesión nueva, también elige desarrollo.
 ENTORNO = globals().get("BACI_ENTORNO", "dev")
 if ENTORNO not in ("dev", "prod"):
-    raise ValueError(f"Entorno inválido: {ENTORNO!r}. Usá 'dev' o 'prod'.")
+    raise ValueError(f"Entorno inválido: {ENTORNO!r}. Usá 'dev'.")
+if ENTORNO != "dev":
+    raise ValueError(
+        "Producción bloqueada: este bundle de desarrollo solo admite entorno=dev. "
+        "No se permite seleccionar entorno=prod mediante parámetros del Job."
+    )
 
-# Salidas derivadas. El entorno determina el esquema, no un nombre arbitrario.
+# Salidas fijas de desarrollo: no admiten un esquema configurable.
 CATALOGO = "workspace"
-ESQUEMA = {"dev": "baci_dev", "prod": "baci"}[ENTORNO]
+ESQUEMA = "baci_dev"
 
 # Insumos compartidos, independientes del esquema donde se escriben las tablas.
 CATALOGO_RAW = "workspace"
@@ -62,7 +67,7 @@ MINIMO_IMPORTACIONES_USD = 1_000_000
 TOP_ALTERNATIVAS = 3
 
 # False reutiliza archivos extraídos cuyo tamaño coincide con el ZIP.
-# True fuerza su extracción de nuevo desde el ZIP, únicamente en prod.
+# El bundle de desarrollo no permite volver a extraer los insumos originales.
 REEXTRAER = False
 
 # Validaciones de configuración, antes de leer o escribir datos.
@@ -102,7 +107,15 @@ CLAVES = ["anio", "codigo_producto", "clasificacion", "version_baci"]
 
 def guardar_delta(dataframe, tabla):
     """Reemplazar una tabla derivada sin acumular filas al repetir el proceso."""
-    permitidas = {TABLA_COMERCIO, TABLA_CONCENTRACION, TABLA_ALTERNATIVAS}
+    # Defensa adicional antes de cualquier operación Spark: aunque cambien
+    # variables de configuración, este código no permite escribir en prod.
+    if ENTORNO != "dev" or CATALOGO != "workspace" or ESQUEMA != "baci_dev":
+        raise ValueError("Escritura bloqueada: solo se permite workspace.baci_dev.")
+    permitidas = {
+        "workspace.baci_dev.comercio_enriquecido",
+        "workspace.baci_dev.concentracion_importaciones_cr",
+        "workspace.baci_dev.alternativas_importaciones_cr",
+    }
     if tabla not in permitidas:
         raise ValueError(f"Tabla fuera de las salidas del proyecto: {tabla}")
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOGO}.{ESQUEMA}").collect()

@@ -5,12 +5,12 @@
 # MAGIC
 # MAGIC Si un archivo ya existe y su tamaño coincide con el registrado en el ZIP, se reutiliza. Esta comprobación de reutilización es por tamaño, no una verificación criptográfica. La opción `REEXTRAER` de 00 permite extraerlo de nuevo.
 # MAGIC
-# MAGIC En `dev` esta etapa solo comprueba y reutiliza los archivos compartidos; no los extrae ni reemplaza. Si falta alguno, prepará los insumos ejecutando únicamente 01 con `entorno=prod` y después volvé a `dev`.
+# MAGIC Este bundle únicamente verifica y reutiliza archivos compartidos. No puede extraerlos ni reemplazarlos en dev o prod. Ante insumos faltantes, hace falta una preparación administrativa separada, fuera de este Job.
 
 # COMMAND ----------
 
 # Leer el parámetro en la tarea antes de cargar la configuración compartida.
-dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+dbutils.widgets.dropdown("entorno", "dev", ["dev"], "Entorno de datos (solo desarrollo)")
 BACI_ENTORNO = dbutils.widgets.get("entorno")
 
 # COMMAND ----------
@@ -21,7 +21,9 @@ BACI_ENTORNO = dbutils.widgets.get("entorno")
 import shutil
 import zipfile
 
-if ENTORNO == "dev" and REEXTRAER:
+if ENTORNO != "dev":
+    raise ValueError("Extracción bloqueada: este bundle no permite preparar archivos en prod.")
+if REEXTRAER:
     raise ValueError("REEXTRAER no se permite en dev: los insumos son de solo lectura.")
 
 
@@ -36,7 +38,7 @@ def extraer_si_necesario(zip_abierto, nombre, destino):
         raise ValueError(
             f"Insumo ausente o con tamaño distinto al ZIP: {destino}. "
             "dev no modifica los archivos compartidos. Prepará los insumos "
-            "con 01_archivos_raw y entorno=prod antes de ejecutar dev."
+            "mediante un proceso administrativo independiente antes de ejecutar dev."
         )
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:

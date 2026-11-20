@@ -4,7 +4,7 @@ Pipeline batch con PySpark, Databricks, Delta y Lakeflow Jobs. Procesa comercio 
 
 El Job configurado en la interfaz terminó con estado **Succeeded** el **18 de noviembre de 2026**, con una duración observada de **8 min 29 s**. Ese mismo día también se validó, desplegó y ejecutó la configuración portátil mediante **Databricks CLI v1.26.0**: el Job del destino `dev` terminó con estado **`TERMINATED SUCCESS`**. Las pruebas se realizaron en el workspace del proyecto, con los datos de origen ya disponibles; véase [el registro de validación](docs/VALIDACION.md).
 
-La configuración actual separa las tablas de desarrollo (`workspace.baci_dev`) de las que consulta el dashboard (`workspace.baci`). Las ejecuciones históricas anteriores a este cambio usaban el mismo esquema. La comprobación de esta separación en Databricks se describe en [Entornos](docs/ENTORNOS.md).
+La configuración separa las tablas de desarrollo (`workspace.baci_dev`) de las publicadas (`workspace.baci`). **Este bundle solo puede escribir en desarrollo**, aunque alguien intente forzar `entorno=prod`. Como ambos esquemas pertenecen a la misma cuenta, esto previene errores del pipeline pero no sustituye permisos separados de Unity Catalog. [Protección y límites](docs/ENTORNOS.md).
 
 ## Archivos del proyecto
 
@@ -14,7 +14,7 @@ La configuración actual separa las tablas de desarrollo (`workspace.baci_dev`) 
 | `resources/baci_cr_pipeline.job.yml` | Define las cuatro tareas del Job, sus dependencias y su configuración. |
 | `resources/baci_cr_auditoria.job.yml` | Job separado para comparar desarrollo y producción sin reconstruir tablas. |
 | `baci_cr/00_configuracion.py` | Contiene período, edición, rutas y filtros analíticos compartidos. |
-| `baci_cr/01_archivos_raw.py` | Extrae del ZIP los archivos seleccionados o reutiliza las copias existentes. |
+| `baci_cr/01_archivos_raw.py` | Verifica los archivos raw y solo reutiliza las copias existentes; no los extrae ni modifica. |
 | `baci_cr/02_comercio_enriquecido.py` | Lee los CSV, valida los catálogos, realiza las uniones y guarda el comercio global. |
 | `baci_cr/03_indicadores_cr.py` | Calcula la concentración de importaciones de CR y los países alternativos. |
 | `baci_cr/04_validaciones.py` | Comprueba cobertura y coherencia de las tablas analíticas. |
@@ -34,9 +34,9 @@ Los archivos numerados `00`–`05` conservan el formato de notebook fuente de Da
 
 ## Pruebas automáticas
 
-La suite incluye 68 casos: 30 para nombres y transformaciones PySpark, 29 para la configuración de entornos y 9 para comparar datos entre desarrollo y producción con Spark local. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
+La suite incluye 76 casos: 30 para nombres y transformaciones PySpark, 37 para la configuración y protección de entornos y 9 para comparar datos entre desarrollo y producción con Spark local. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
 
-El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `68 passed`.
+El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `76 passed`.
 
 Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La integración completa se comprueba al desplegar y ejecutar el Job en Databricks. [Consultar las instrucciones de pruebas](docs/PRUEBAS.md).
 
@@ -74,11 +74,11 @@ Con la configuración actual, deben existir:
 | Volumen | `workspace.baci.raw` |
 | ZIP de origen | `/Volumes/workspace/baci/raw/BACI_HS92_V202501.zip` |
 
-En un workspace nuevo, prepará esos recursos y subí el ZIP al volumen. Para extraer los insumos por primera vez, ejecutá únicamente `01_archivos_raw` con el widget `entorno=prod`; después utilizá `dev` para las pruebas. La etapa 01 en desarrollo verifica los archivos ya extraídos y falla si faltan o su tamaño no coincide, sin modificarlos.
+En un workspace nuevo, prepará el volumen, el ZIP y los CSV mediante un procedimiento administrativo separado **antes** de usar este bundle. El notebook `01_archivos_raw` del bundle no extrae archivos ni admite `entorno=prod`; solo verifica el tamaño y presencia de los 11 archivos esperados y falla sin modificarlos si alguno falta o no coincide.
 
-La identidad de desarrollo necesita lectura del volumen y permisos para crear y reemplazar tablas en `workspace.baci_dev`. Si ese esquema todavía no existe, necesita crearlo en el catálogo; alternativamente, su propietario puede crearlo antes. La extracción inicial requiere escritura en el volumen. `CATALOGO` configura las salidas; `CATALOGO_RAW`, `ESQUEMA_RAW` y `VOLUMEN` configuran los insumos de forma independiente.
+La identidad de desarrollo necesita lectura del volumen y permisos para crear y reemplazar tablas en `workspace.baci_dev`. Si ese esquema todavía no existe, necesita permiso para crearlo en el catálogo; alternativamente, su propietario puede prepararlo antes. La preparación inicial del ZIP/CSV necesita un proceso independiente. `CATALOGO` y `ESQUEMA` están fijados a las salidas de desarrollo; `CATALOGO_RAW`, `ESQUEMA_RAW` y `VOLUMEN` indican los insumos compartidos.
 
-La etapa 01 extrae únicamente los años configurados y los catálogos. Reutiliza un archivo cuando su tamaño coincide con el registrado en el ZIP; esa comparación no comprueba igualdad criptográfica. El ZIP sigue siendo necesario aunque los CSV estén extraídos.
+La etapa 01 solo comprueba la presencia de los años configurados y los catálogos. Reutiliza un archivo cuando su tamaño coincide con el registrado en el ZIP; esa comparación no comprueba igualdad criptográfica. El ZIP sigue siendo necesario aunque los CSV estén extraídos.
 
 ## Resultados observados con los parámetros actuales
 
@@ -96,7 +96,7 @@ Estos valores proceden de las salidas compartidas por el usuario. Los 957 casos 
 
 ## Tablas y criterios
 
-Las tres salidas son tablas Delta bajo `workspace.baci_dev` al usar `entorno=dev`, o `workspace.baci` al elegir explícitamente `entorno=prod`. El dashboard sigue consultando `workspace.baci`:
+Las tres salidas del bundle son tablas Delta bajo `workspace.baci_dev`. El parámetro `entorno=prod` se rechaza antes de leer o escribir datos. Las tablas ya publicadas siguen en `workspace.baci` y el dashboard continúa consultándolas:
 
 | Tabla | Unidad de una fila |
 |---|---|
@@ -118,7 +118,7 @@ El catálogo de productos incluye `9999AA`, descrito por la fuente como código 
 
 En Databricks, abrí `Jobs & Pipelines`, seleccioná `baci_cr_pipeline` y usá `Run now`. Se configuró para ejecución manual. Al finalizar, revisá el estado de la ejecución y la salida de `04_validaciones`.
 
-El Job original creado en la interfaz y el Job del bundle son recursos distintos. El despliegue de `dev` actualiza únicamente el segundo. El Job original conserva sus notebooks y configuración anteriores; si se actualizan con estos archivos, debe recibir `entorno=prod` en todas las tareas para seguir manteniendo las tablas del dashboard. No ejecutar dos reconstrucciones simultáneas sobre el mismo esquema.
+El Job original creado en la interfaz y el Job del bundle son recursos distintos. El despliegue de `dev` actualiza únicamente el segundo. El Job original conserva sus notebooks y configuración anteriores; **no debe reemplazarse con los notebooks protegidos de este bundle para mantener producción**, ya que rechazan `entorno=prod`. La publicación futura requerirá una ruta separada y revisada. No ejecutar reconstrucciones simultáneas sobre el mismo esquema.
 
 La etapa 02 reemplaza la tabla global y la 03 reemplaza las dos tablas analíticas. La carga es una reconstrucción completa, no incremental. Cada tabla se confirma por separado; los resultados se consumen después de completar las cuatro etapas.
 
@@ -158,7 +158,7 @@ Para ejecutarlo:
 databricks bundle run -t dev -p BACI baci_cr_pipeline
 ```
 
-Se mantiene `PERFORMANCE_OPTIMIZED` y la cola habilitada del YAML exportado. `max_concurrent_runs: 1` limita a una la ejecución simultánea de este Job, incluso en modo `development`. El bundle entrega `entorno=${bundle.target}` a las cuatro tareas: con el único destino configurado, `dev`, las salidas van a `workspace.baci_dev`. Los CSV se leen del volumen compartido sin extraerlos ni reemplazarlos. [Verificar la separación de entornos](docs/ENTORNOS.md).
+Se mantiene `PERFORMANCE_OPTIMIZED` y la cola habilitada del YAML exportado. `max_concurrent_runs: 1` limita a una la ejecución simultánea de este Job, incluso en modo `development`. El bundle entrega `entorno=${bundle.target}` a las cuatro tareas y solo admite el destino `dev`. Cualquier intento de forzar `prod` falla antes de procesar datos. Los CSV se leen del volumen compartido sin extraerlos ni reemplazarlos. [Verificar la protección de entornos](docs/ENTORNOS.md).
 
 Para cambiar período o filtros, editá `baci_cr/00_configuracion.py`, validá y desplegá de nuevo. El entorno sí se recibe como parámetro del Job; período y filtros siguen definidos en el código. Esta versión no descarga automáticamente nuevas ediciones de BACI.
 

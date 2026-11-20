@@ -7,7 +7,7 @@ de entrada y las escrituras Delta permanecen en los notebooks.
 
 ## Cobertura
 
-La suite contiene 68 casos: 30 de catálogos y transformaciones, 29 de entornos y 9 de comparación dev/prod.
+La suite contiene 76 casos: 30 de catálogos y transformaciones, 37 de entornos (incluidos bloqueos dev-only) y 9 de comparación dev/prod.
 Los flujos e importes de prueba son sintéticos;
 no constituyen nuevos resultados económicos. Los cuatro nombres con
 codificación dañada reproducen el problema observado en el catálogo BACI.
@@ -19,8 +19,8 @@ codificación dañada reproducen el problema observado en el catálogo BACI.
 | Concentración | Agregación por proveedor, importador CR, separación por año, producto y edición, desempate por código y total cero. |
 | Umbrales | Límites inclusivos de 90 % y US$1 millón, valores inmediatamente inferiores sin redondear, parámetros alternativos y nulos. |
 | Alternativas | Exclusión de CR y del principal, exportaciones positivas, límite configurable, desempates, ventas previas a CR y ausencia de candidatos. |
-| Entornos | Desarrollo por defecto, rechazo de entornos desconocidos, entradas compartidas, propagación del parámetro en los cinco notebooks y escrituras limitadas al esquema elegido. |
-| Archivos originales | Desarrollo reutiliza archivos sin modificarlos, falla ante archivos faltantes o de tamaño distinto y rechaza la reextracción; prod conserva la extracción. |
+| Entornos | Desarrollo por defecto, bloqueo explícito de prod, widget solo dev, insumos compartidos y guardas de escritura aunque se modifiquen variables de configuración. |
+| Archivos originales | El bundle reutiliza archivos sin modificarlos; rechaza insumos faltantes, tamaños distintos, la reextracción y la activación de prod. |
 | Auditoría dev/prod | Detecta valores diferentes con conteos iguales, filas duplicadas, nulos y diferencias de esquema; respeta un máximo de ejemplos. |
 
 ## Ejecutar en GitHub Actions
@@ -32,7 +32,7 @@ El archivo `.github/workflows/tests.yml` ejecuta **Pruebas BACI** después de ca
 2. Seleccionar la ejecución **Pruebas BACI** correspondiente al commit.
 3. Abrir **Python y PySpark** y revisar el paso **Ejecutar pruebas**.
 
-El resultado esperado es `68 passed` y estado verde. Los registros de Actions
+El resultado esperado es `76 passed` y estado verde. Los registros de Actions
 son la evidencia de cada ejecución y se vinculan al commit comprobado.
 
 GitHub prepara un ejecutor Ubuntu con Python 3.12 y Java 21. Las dependencias
@@ -99,7 +99,10 @@ importarse como notebooks. El bundle sincroniza los archivos de la carpeta
 `baci_cr`. Copiar únicamente los notebooks produciría un error de importación.
 
 `dev` entrega `entorno=dev` a todas las tareas y reconstruye las tablas de
-`workspace.baci_dev`. Los insumos se leen de `workspace.baci.raw` sin modificarlos.
+`workspace.baci_dev`. Cualquier intento de forzar `entorno=prod` se rechaza
+antes de consultar Spark; la rutina de escritura comprueba además los nombres
+literales de las salidas permitidas. Los insumos se leen de
+`workspace.baci.raw` sin modificarlos.
 El dashboard publicado sigue consultando `workspace.baci`. La guía de
 [entornos](ENTORNOS.md) incluye cómo verificar que sus versiones no cambiaron.
 

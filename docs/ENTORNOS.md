@@ -1,127 +1,82 @@
-# Entornos de datos del proyecto BACI
+# Entornos de datos y protección de producción (BACI)
 
-El destino `dev` del bundle entrega el parámetro `entorno=dev` a las cuatro
-tareas. Esto separa sus tablas de las que consulta el dashboard publicado.
+## Situación actual
 
-| Uso | Entorno | Tablas | Archivos originales |
-|---|---|---|---|
-| Pruebas del pipeline | `dev` | `workspace.baci_dev` | Lectura de `workspace.baci.raw`. |
-| Resultados del dashboard | `prod` explícito | `workspace.baci` | La etapa 01 puede preparar los archivos de `workspace.baci.raw`. |
+| Recurso | Ruta | Uso desde este bundle |
+|---|---|---|
+| Tablas derivadas de desarrollo | `workspace.baci_dev` | Lectura y escritura de las tres tablas |
+| Tablas del dashboard | `workspace.baci` | **Sin escritura** desde los notebooks 01–05 |
+| ZIP y CSV originales | `/Volumes/workspace/baci/raw` | Solo lectura y verificación de tamaños |
+| Auditoría | `baci_cr_auditoria` | Lee dos tablas analíticas en cada esquema; no publica resultados |
 
-Se conservan los nombres `comercio_enriquecido`,
-`concentracion_importaciones_cr` y `alternativas_importaciones_cr` en cada
-esquema. El período sigue siendo 2016–2023, HS92, edición 202501.
+Los dos esquemas tienen como propietario a la misma identidad personal que ejecuta los
+Jobs. La revisión en Databricks del 20 de noviembre de 2026 identificó al mismo
+propietario en `baci` y `baci_dev`. Por tanto, **esto es una protección en la
+aplicación contra errores accidentales, no aislamiento de seguridad de Unity Catalog**.
+El propietario puede seguir modificando producción por SQL u otros Jobs.
 
-## Cómo llega el entorno al código
+## Bloqueo preventivo del bundle de desarrollo
 
-`resources/baci_cr_pipeline.job.yml` define un parámetro de Job con el valor
-`${bundle.target}`. Databricks lo entrega a las tareas de notebook. Los cinco
-notebooks de trabajo leen su widget `entorno` antes de ejecutar
-`%run ./00_configuracion`. La variable de Python `BACI_ENTORNO` transporta el
-valor a la configuración compartida; el notebook 00 no crea widgets propios.
-Esto evita depender de la herencia de widgets a través de `%run`.
+Este repositorio solo despliega el target `dev`. Los notebooks `01`–`05`
+ofrecen exclusivamente el widget `entorno=dev` y cargan el notebook compartido
+`00_configuracion` antes de leer o escribir tablas.
 
-Sin parámetro se utiliza `dev`. Un entorno vacío o desconocido produce un error
-antes de leer o escribir datos. `guardar_delta` acepta únicamente las tres
-tablas del esquema elegido y crea ese esquema si no existe al guardar la
-primera tabla. No se aceptan nombres arbitrarios de esquema como parámetros.
+- Si se fuerza `entorno=prod` en un parámetro del Job o notebook,
+  `00_configuracion` genera `ValueError: Producción bloqueada` antes de procesar datos.
+- `guardar_delta` tiene una segunda comprobación de entorno y catálogo/esquema.
+  Solo admite los nombres literales de las tres tablas bajo `workspace.baci_dev`.
+  Una desviación falla antes de emitir SQL o registrar vistas temporales.
+- `01_archivos_raw` se limita a comprobar que los 11 archivos usados actualmente
+  están presentes y tienen tamaños consistentes con el ZIP; no reextrae.
+  También rechaza `REEXTRAER=True` y un cambio sobrevenido a `prod`.
+- El Job de auditoría `baci_cr_auditoria` mantiene lecturas de ambas tablas
+  analíticas en `dev` y `prod`, sin escrituras.
 
-El único target del bundle sigue siendo `dev`; esta etapa no añade un despliegue
-`prod`. El valor `prod` del notebook permite seleccionar explícitamente las
-tablas existentes al ejecutar notebooks o configurar un Job que las mantenga.
-Los parámetros pueden ser cambiados por quien tenga permiso para ejecutar con
-otros valores; esta separación de nombres no sustituye los permisos de Unity
-Catalog ni constituye aislamiento entre usuarios.
+El Job histórico creado manualmente en Databricks no forma parte de este bundle
+y **no queda protegido automáticamente**. Tampoco se impiden consultas SQL directas
+del propietario ni se cambia ninguna concesión de permisos.
 
-## Primera comprobación en el workspace existente
+## Validar y desplegar la protección
 
-Antes de ejecutar desarrollo, guardá la última versión Delta de las tablas
-publicadas desde el editor SQL:
-
-```sql
-DESCRIBE HISTORY workspace.baci.comercio_enriquecido LIMIT 1;
-DESCRIBE HISTORY workspace.baci.concentracion_importaciones_cr LIMIT 1;
-DESCRIBE HISTORY workspace.baci.alternativas_importaciones_cr LIMIT 1;
-```
-
-Desde la carpeta local que contiene `databricks.yml`, con el perfil `BACI`:
+Desde la carpeta local que contiene `databricks.yml` y el perfil `BACI`:
 
 ```powershell
 databricks bundle validate -t dev -p BACI
 databricks bundle deploy -t dev -p BACI
-databricks bundle run -t dev -p BACI baci_cr_pipeline
 ```
 
-Comprobá lo siguiente en la ejecución:
+Desplegar solo actualiza el código y los recursos del bundle; **no inicia una
+reconstrucción** ni modifica las tablas Delta. GitHub Actions comprueba las
+rutas permitidas y el rechazo del entorno de producción con datos sintéticos.
 
-1. El Job tiene el parámetro `entorno` con valor `dev`.
-2. Cada tarea muestra `Entorno: dev | Tablas: workspace.baci_dev`.
-3. La etapa 01 muestra 0 archivos extraídos y 11 reutilizados para el período actual.
-4. Las escrituras de 02 y 03 muestran nombres completos bajo `workspace.baci_dev`.
-5. La etapa 04 termina correctamente y el Job muestra `TERMINATED SUCCESS`.
-6. Al repetir las tres consultas de historial, las versiones de `workspace.baci`
-   coinciden con las iniciales. Durante esta comprobación no debe ejecutarse
-   otro Job que mantenga esas mismas tablas.
+### Prueba negativa sin procesar 86,7 millones de filas
 
-La identidad que ejecuta el Job necesita lectura del volumen y permisos para
-crear/reemplazar tablas en el esquema de desarrollo. Si el esquema no existe,
-necesita permiso para crearlo en el catálogo; su propietario también puede
-prepararlo antes con `CREATE SCHEMA IF NOT EXISTS workspace.baci_dev` y otorgar
-los permisos correspondientes.
+Tras el despliegue, comprobar en una ejecución aislada del notebook
+`00_configuracion` que la variable `BACI_ENTORNO = "prod"`, establecida
+antes de ejecutar su código, provoca un error `Producción bloqueada`.
+No probar este rechazo ejecutando el Job completo: si el parámetro llegara
+a omitirse por un error de configuración, se reconstruiría `dev`.
+Para una comprobación sin recursos Databricks, consultar los tests
+`tests/test_entornos.py` y el estado verde de GitHub Actions.
 
-La ejecución crea otra copia de las tres tablas derivadas, incluida la tabla
-global de comercio. Reutiliza el ZIP y los CSV existentes, pero requiere espacio
-para las nuevas tablas y cómputo para reconstruirlas.
+## Lo que falta para aislamiento real
 
-## Consultar desarrollo
+Para restringir el acceso efectivo a producción habrá que diseñar una identidad
+de ejecución de desarrollo sin privilegios de modificación sobre
+`workspace.baci`, mantener lectura donde se necesite auditar y reservar un
+flujo de publicación de producción revisado. No se cambia de dueño ni se
+revocan permisos en esta etapa, ya que actualmente ambos esquemas dependen
+de la misma cuenta. Evitar otorgar a la identidad de desarrollo permisos
+amplios de propietario o administración.
 
-Abrí `05_consultas_cr` de la copia desplegada y elegí `entorno=dev`. También podés
-comprobar las tablas analíticas desde SQL:
+## Comprobación de integridad y límites
 
-```sql
-SELECT COUNT(*) AS indicadores,
-       COUNT(DISTINCT codigo_producto) AS productos,
-       MIN(anio) AS primer_anio, MAX(anio) AS ultimo_anio
-FROM workspace.baci_dev.concentracion_importaciones_cr;
+Las tablas analíticas se compararon el 20 de noviembre de 2026 mediante el
+Job de auditoría; el resultado observado fue cero filas exclusivas en ambos
+sentidos para concentración y alternativas. Véase
+[VALIDACION.md](VALIDACION.md) y [AUDITORIA.md](AUDITORIA.md).
+Esto no verifica la igualdad del comercio global ni sustituye la revisión de
+los permisos del workspace.
 
-SELECT COUNT(*) AS alternativas
-FROM workspace.baci_dev.alternativas_importaciones_cr;
-```
-
-Con los mismos insumos y criterios, los resultados de referencia son 33.727
-indicadores, 4.524 productos, años 2016–2023 y 2.871 filas de alternativas. Son
-conteos históricos de referencia, no un resultado ya observado de esta nueva
-ejecución. El dashboard publicado continúa leyendo `workspace.baci`; su botón
-Refresh no consulta las tablas de desarrollo.
-
-## Si faltan archivos originales
-
-La etapa 01 de `dev` solo reutiliza archivos cuyo tamaño coincide con el ZIP.
-Ante un archivo faltante o de tamaño distinto, falla sin extraerlo ni repararlo.
-También rechaza `REEXTRAER=True`. La comprobación es por tamaño, no por checksum.
-
-Para preparar un workspace nuevo o reparar los insumos, subí el ZIP al volumen
-y ejecutá **únicamente** `01_archivos_raw` con `entorno=prod`. Esta etapa prepara
-archivos y no escribe las tablas analíticas. Después volvé a `dev` para ejecutar
-el pipeline. Preparar o reemplazar insumos compartidos requiere que no haya
-otros Jobs leyéndolos en ese momento.
-
-## Alcance de esta etapa
-
-El Job manual original conserva sus notebooks anteriores hasta que se actualicen.
-Si se sustituyen por estos archivos, configurá `entorno=prod` en el Job para que
-siga manteniendo las tablas del dashboard. No ejecutar dos reconstrucciones
-simultáneas del mismo esquema: el límite de concurrencia es por Job.
-
-No hay promoción automática de resultados ni un cambio conjunto de las tres
-tablas: cada escritura sigue siendo independiente y 04 valida después de 03.
-Publicar resultados solo después de validar una versión provisional es una
-mejora posterior. La evidencia de CI cubre las rutas y llamadas locales; el
-despliegue, los permisos y la propagación real de parámetros se comprueban con
-la ejecución anterior.
-
-## Referencias
-
-- [Parámetros de Job en bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/job-parameters)
-- [Entrega de parámetros a las tareas](https://docs.databricks.com/aws/en/jobs/job-parameters)
-- [Widgets y `%run`](https://docs.databricks.com/aws/en/notebooks/widgets)
+La reconstrucción del pipeline sigue escribiendo cada tabla por separado.
+No hay publicación atómica ni promoción automática de dev a prod.

@@ -10,7 +10,7 @@
 # COMMAND ----------
 
 # Leer el parámetro en la tarea antes de cargar la configuración compartida.
-dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+dbutils.widgets.dropdown("entorno", "dev", ["dev"], "Entorno de datos (solo desarrollo)")
 BACI_ENTORNO = dbutils.widgets.get("entorno")
 
 # COMMAND ----------
