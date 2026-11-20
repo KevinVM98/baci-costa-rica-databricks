@@ -8,6 +8,12 @@
 # MAGIC El catálogo se lee como UTF-8. Algunos nombres de países contienen texto UTF-8 que fue interpretado como Latin-1 antes de guardarse en el CSV. Se revierte una capa de esa conversión al preparar el catálogo, con decodificación estricta y sin modificar los archivos originales. Los nombres corregidos se usan tanto para exportadores como para importadores.
 
 # COMMAND ----------
+
+# Leer el parámetro en la tarea antes de cargar la configuración compartida.
+dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+BACI_ENTORNO = dbutils.widgets.get("entorno")
+
+# COMMAND ----------
 # MAGIC %run ./00_configuracion
 
 # COMMAND ----------

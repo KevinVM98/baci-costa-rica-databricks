@@ -4,6 +4,8 @@ Pipeline batch con PySpark, Databricks, Delta y Lakeflow Jobs. Procesa comercio 
 
 El Job configurado en la interfaz terminó con estado **Succeeded** el **18 de noviembre de 2026**, con una duración observada de **8 min 29 s**. Ese mismo día también se validó, desplegó y ejecutó la configuración portátil mediante **Databricks CLI v1.26.0**: el Job del destino `dev` terminó con estado **`TERMINATED SUCCESS`**. Las pruebas se realizaron en el workspace del proyecto, con los datos de origen ya disponibles; véase [el registro de validación](docs/VALIDACION.md).
 
+La configuración actual separa las tablas de desarrollo (`workspace.baci_dev`) de las que consulta el dashboard (`workspace.baci`). Las ejecuciones históricas anteriores a este cambio usaban el mismo esquema. La comprobación de esta separación en Databricks se describe en [Entornos](docs/ENTORNOS.md).
+
 ## Archivos del proyecto
 
 | Archivo | Función |
@@ -21,15 +23,16 @@ El Job configurado en la interfaz terminó con estado **Succeeded** el **18 de n
 | `tests/` | Pruebas de las funciones con ejemplos pequeños y resultados conocidos. |
 | `.github/workflows/tests.yml` | Ejecuta las pruebas automáticamente en GitHub Actions. |
 | `docs/PRUEBAS.md` | Explica la cobertura de las pruebas, CI y la comprobación en Databricks. |
+| `docs/ENTORNOS.md` | Explica la separación de tablas, los insumos compartidos y cómo verificarla. |
 | `docs/VALIDACION.md` | Registra las evidencias observadas y el alcance de la revisión local. |
 
 Los archivos numerados `00`–`05` conservan el formato de notebook fuente de Databricks. El procesamiento de los datos BACI se ejecuta en Databricks; no se ejecutan estos notebooks con `python archivo.py` en la computadora personal. `catalogos.py` y `transformaciones.py` son módulos Python normales que deben mantenerse junto a los notebooks y desplegarse con el bundle.
 
 ## Pruebas automáticas
 
-La suite incluye 30 casos con pytest y PySpark: corrección de nombres, conversión a USD, concentración, umbrales inclusivos, desempates y exclusiones del ranking. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
+La suite incluye 59 casos: 30 para nombres y transformaciones PySpark, y 29 para la configuración de entornos, el destino de las escrituras y la lectura de insumos en desarrollo. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
 
-El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `30 passed`.
+El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `59 passed`.
 
 Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La integración completa se comprueba al desplegar y ejecutar el Job en Databricks. [Consultar las instrucciones de pruebas](docs/PRUEBAS.md).
 
@@ -42,7 +45,7 @@ Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La i
 | `03_indicadores_cr` | `02_comercio_enriquecido` | Tablas `concentracion_importaciones_cr` y `alternativas_importaciones_cr`. |
 | `04_validaciones` | `03_indicadores_cr` | Controles y resumen de cobertura. |
 
-Las tareas posteriores usan `ALL_SUCCESS`. Cada notebook carga `00_configuracion` con `%run ./00_configuracion`; por eso los seis notebooks se mantienen juntos. `05_consultas_cr` se usa para explorar los resultados y no es una tarea del Job.
+Las tareas posteriores usan `ALL_SUCCESS`. Cada notebook lee el parámetro `entorno` y después carga `00_configuracion` con `%run ./00_configuracion`; por eso los seis notebooks se mantienen juntos. `05_consultas_cr` se usa para explorar los resultados y no es una tarea del Job. Sin un parámetro explícito se utiliza `dev`.
 
 ## Datos y preparación del workspace
 
@@ -57,7 +60,9 @@ Con la configuración actual, deben existir:
 | Volumen | `workspace.baci.raw` |
 | ZIP de origen | `/Volumes/workspace/baci/raw/BACI_HS92_V202501.zip` |
 
-En un workspace nuevo, prepará esos recursos y subí el ZIP al volumen antes de ejecutar el Job. La identidad que ejecute el Job necesita acceso al volumen y permisos para crear y reemplazar las tablas del esquema. Si los nombres son distintos, ajustá `CATALOGO`, `ESQUEMA` y `VOLUMEN` en `baci_cr/00_configuracion.py`.
+En un workspace nuevo, prepará esos recursos y subí el ZIP al volumen. Para extraer los insumos por primera vez, ejecutá únicamente `01_archivos_raw` con el widget `entorno=prod`; después utilizá `dev` para las pruebas. La etapa 01 en desarrollo verifica los archivos ya extraídos y falla si faltan o su tamaño no coincide, sin modificarlos.
+
+La identidad de desarrollo necesita lectura del volumen y permisos para crear y reemplazar tablas en `workspace.baci_dev`. Si ese esquema todavía no existe, necesita crearlo en el catálogo; alternativamente, su propietario puede crearlo antes. La extracción inicial requiere escritura en el volumen. `CATALOGO` configura las salidas; `CATALOGO_RAW`, `ESQUEMA_RAW` y `VOLUMEN` configuran los insumos de forma independiente.
 
 La etapa 01 extrae únicamente los años configurados y los catálogos. Reutiliza un archivo cuando su tamaño coincide con el registrado en el ZIP; esa comparación no comprueba igualdad criptográfica. El ZIP sigue siendo necesario aunque los CSV estén extraídos.
 
@@ -77,7 +82,7 @@ Estos valores proceden de las salidas compartidas por el usuario. Los 957 casos 
 
 ## Tablas y criterios
 
-Las tres salidas son tablas Delta bajo `workspace.baci`:
+Las tres salidas son tablas Delta bajo `workspace.baci_dev` al usar `entorno=dev`, o `workspace.baci` al elegir explícitamente `entorno=prod`. El dashboard sigue consultando `workspace.baci`:
 
 | Tabla | Unidad de una fila |
 |---|---|
@@ -98,6 +103,8 @@ El catálogo de productos incluye `9999AA`, descrito por la fuente como código 
 ## Ejecutar el Job que ya existe
 
 En Databricks, abrí `Jobs & Pipelines`, seleccioná `baci_cr_pipeline` y usá `Run now`. Se configuró para ejecución manual. Al finalizar, revisá el estado de la ejecución y la salida de `04_validaciones`.
+
+El Job original creado en la interfaz y el Job del bundle son recursos distintos. El despliegue de `dev` actualiza únicamente el segundo. El Job original conserva sus notebooks y configuración anteriores; si se actualizan con estos archivos, debe recibir `entorno=prod` en todas las tareas para seguir manteniendo las tablas del dashboard. No ejecutar dos reconstrucciones simultáneas sobre el mismo esquema.
 
 La etapa 02 reemplaza la tabla global y la 03 reemplaza las dos tablas analíticas. La carga es una reconstrucción completa, no incremental. Cada tabla se confirma por separado; los resultados se consumen después de completar las cuatro etapas.
 
@@ -137,9 +144,9 @@ Para ejecutarlo:
 databricks bundle run -t dev -p BACI baci_cr_pipeline
 ```
 
-Se mantiene `PERFORMANCE_OPTIMIZED` y la cola habilitada del YAML exportado. `max_concurrent_runs: 1` limita a una la ejecución simultánea de este Job, incluso en modo `development`. Si ambos Jobs se usan en el mismo workspace, apuntan a las mismas tablas de `workspace.baci`: ejecutá una reconstrucción a la vez. El destino `dev` separa los recursos del bundle, pero no cambia el esquema de datos definido en `00_configuracion.py`.
+Se mantiene `PERFORMANCE_OPTIMIZED` y la cola habilitada del YAML exportado. `max_concurrent_runs: 1` limita a una la ejecución simultánea de este Job, incluso en modo `development`. El bundle entrega `entorno=${bundle.target}` a las cuatro tareas: con el único destino configurado, `dev`, las salidas van a `workspace.baci_dev`. Los CSV se leen del volumen compartido sin extraerlos ni reemplazarlos. [Verificar la separación de entornos](docs/ENTORNOS.md).
 
-Para cambiar período o filtros, editá `baci_cr/00_configuracion.py`, validá y desplegá de nuevo. Esta versión no recibe esos parámetros mediante widgets del Job ni descarga automáticamente nuevas ediciones de BACI.
+Para cambiar período o filtros, editá `baci_cr/00_configuracion.py`, validá y desplegá de nuevo. El entorno sí se recibe como parámetro del Job; período y filtros siguen definidos en el código. Esta versión no descarga automáticamente nuevas ediciones de BACI.
 
 ## Fuentes
 

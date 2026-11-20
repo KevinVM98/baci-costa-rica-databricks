@@ -7,7 +7,8 @@ de entrada y las escrituras Delta permanecen en los notebooks.
 
 ## Cobertura
 
-La suite contiene 30 casos. Los flujos e importes de prueba son sintéticos;
+La suite contiene 59 casos: 30 de catálogos y transformaciones y 29 de entornos.
+Los flujos e importes de prueba son sintéticos;
 no constituyen nuevos resultados económicos. Los cuatro nombres con
 codificación dañada reproducen el problema observado en el catálogo BACI.
 
@@ -18,6 +19,8 @@ codificación dañada reproducen el problema observado en el catálogo BACI.
 | Concentración | Agregación por proveedor, importador CR, separación por año, producto y edición, desempate por código y total cero. |
 | Umbrales | Límites inclusivos de 90 % y US$1 millón, valores inmediatamente inferiores sin redondear, parámetros alternativos y nulos. |
 | Alternativas | Exclusión de CR y del principal, exportaciones positivas, límite configurable, desempates, ventas previas a CR y ausencia de candidatos. |
+| Entornos | Desarrollo por defecto, rechazo de entornos desconocidos, entradas compartidas, propagación del parámetro en los cinco notebooks y escrituras limitadas al esquema elegido. |
+| Archivos originales | Desarrollo reutiliza archivos sin modificarlos, falla ante archivos faltantes o de tamaño distinto y rechaza la reextracción; prod conserva la extracción. |
 
 ## Ejecutar en GitHub Actions
 
@@ -28,7 +31,7 @@ El archivo `.github/workflows/tests.yml` ejecuta **Pruebas BACI** después de ca
 2. Seleccionar la ejecución **Pruebas BACI** correspondiente al commit.
 3. Abrir **Python y PySpark** y revisar el paso **Ejecutar pruebas**.
 
-El resultado esperado es `30 passed` y estado verde. Los registros de Actions
+El resultado esperado es `59 passed` y estado verde. Los registros de Actions
 son la evidencia de cada ejecución y se vinculan al commit comprobado.
 
 GitHub prepara un ejecutor Ubuntu con Python 3.12 y Java 21. Las dependencias
@@ -71,9 +74,12 @@ ejecución ya proporciona PySpark.
 
 ## Comprobación posterior en Databricks
 
-CI no ejecuta Unity Catalog, las escrituras Delta ni comprueba los permisos del
-workspace. El notebook `04_validaciones` conserva los controles de cobertura y
-coherencia de los resultados guardados.
+Las pruebas de entornos ejecutan el código real de configuración y preparación
+de archivos con un ZIP pequeño. Sustituyen los widgets y Spark SQL por objetos
+locales que registran llamadas. CI no ejecuta Unity Catalog, las escrituras
+Delta ni comprueba los permisos o el comportamiento real de `%run` en Databricks.
+El notebook `04_validaciones` conserva los controles de cobertura y coherencia
+de los resultados guardados.
 
 Después de revisar CI, desde una copia local que contenga los cambios:
 
@@ -87,12 +93,15 @@ Los dos módulos nuevos deben desplegarse junto a `02` y `03`; no deben
 importarse como notebooks. El bundle sincroniza los archivos de la carpeta
 `baci_cr`. Copiar únicamente los notebooks produciría un error de importación.
 
-La ejecución sigue reconstruyendo las tablas del esquema `workspace.baci`.
-El destino `dev` todavía no aísla el esquema de datos. Ejecutar una sola
-reconstrucción a la vez, sin iniciar simultáneamente el Job manual.
+`dev` entrega `entorno=dev` a todas las tareas y reconstruye las tablas de
+`workspace.baci_dev`. Los insumos se leen de `workspace.baci.raw` sin modificarlos.
+El dashboard publicado sigue consultando `workspace.baci`. La guía de
+[entornos](ENTORNOS.md) incluye cómo verificar que sus versiones no cambiaron.
 
-Comprobar `TERMINATED SUCCESS`, la aprobación de `04_validaciones` y los
-resultados conocidos al actualizar el dashboard. Para la fuente y parámetros
+Comprobar `TERMINATED SUCCESS`, los mensajes de destino `workspace.baci_dev`
+y la aprobación de `04_validaciones`. Consultar las tablas de desarrollo con
+`05_consultas_cr` y `entorno=dev`; refrescar el dashboard no muestra estas tablas.
+Para la fuente y parámetros
 actuales se observaron 33 727 productos-año, 957 casos seleccionados y 2 871
 filas de alternativas. Estos conteos pueden cambiar al modificar la edición,
 los archivos, los umbrales o el período.

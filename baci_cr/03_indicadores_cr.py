@@ -8,6 +8,12 @@
 # MAGIC Esta etapa reemplaza ambas tablas analíticas. Los candidatos describen comercio histórico, no empresas proveedoras ni disponibilidad comercial actual.
 
 # COMMAND ----------
+
+# Leer el parámetro en la tarea antes de cargar la configuración compartida.
+dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+BACI_ENTORNO = dbutils.widgets.get("entorno")
+
+# COMMAND ----------
 # MAGIC %run ./00_configuracion
 
 # COMMAND ----------

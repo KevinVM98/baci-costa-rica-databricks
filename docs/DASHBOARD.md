@@ -27,7 +27,7 @@ El dashboard consulta estas tablas persistentes:
 
 Las consultas del dashboard filtran `anio` entre 2016 y 2023, `clasificacion = 'HS92'` y `version_baci = '202501'`. Si se cambia el período, la edición o los criterios del pipeline, también hay que revisar las consultas del dashboard y sus títulos.
 
-Para reconstruir las tablas, seguí la preparación y ejecución descritas en el [README](../README.md). El archivo `.lvdash.json` guarda las consultas y la configuración visual; las tablas de datos deben existir en el workspace donde se importe.
+Para reconstruir estas tablas, el pipeline debe usar explícitamente `entorno=prod`. Las ejecuciones del bundle con `-t dev` escriben en `workspace.baci_dev` y no actualizan este dashboard. Consultá la [guía de entornos](ENTORNOS.md) antes de actualizar las tablas publicadas. El archivo `.lvdash.json` guarda las consultas y la configuración visual; las tablas de datos deben existir en el workspace donde se importe.
 
 ## Datasets del dashboard
 
@@ -90,7 +90,7 @@ El ranking identifica países con comercio histórico del producto. Puede inclui
 
 ## Recuperar el dashboard
 
-1. Prepará las tablas analíticas mediante el pipeline y completá `04_validaciones`.
+1. Prepará las tablas analíticas de `workspace.baci` mediante el pipeline con `entorno=prod` y completá `04_validaciones` en ese mismo entorno.
 2. En la lista de **Dashboards**, elegí **Import dashboard from file**.
 3. Seleccioná el archivo `.lvdash.json` de la carpeta `dashboards` y confirmá la importación.
 4. Seleccioná un SQL warehouse disponible. Si el catálogo o esquema cambió, ajustá las referencias completas a las tablas en **Data**.
@@ -105,7 +105,8 @@ La importación crea un dashboard. Para recuperar la definición sobre uno exist
 
 | Cambio | Acción |
 |---|---|
-| Nuevos datos o reconstrucción del pipeline | Esperar a que terminen las cuatro etapas y usar **Refresh** dentro del dashboard. |
+| Nuevos datos o reconstrucción con `entorno=prod` | Esperar a que terminen las cuatro etapas y usar **Refresh** dentro del dashboard. |
+| Pruebas con `entorno=dev` | Consultar `workspace.baci_dev` o 05 con ese entorno; el dashboard publicado sigue mostrando `workspace.baci`. |
 | Consultas, filtros predeterminados, textos o diseño | Revisar el borrador, publicar y exportar la nueva definición. |
 | Nueva definición exportada | Reemplazar el JSON correspondiente en `dashboards`, crear un commit y hacer push. |
 
