@@ -21,9 +21,9 @@ def test_sin_parametro_se_elige_desarrollo():
     assert config["TABLA_COMERCIO"] == "workspace.baci_dev.comercio_enriquecido"
 
 
-@pytest.mark.parametrize("entorno,esquema", [("dev", "baci_dev"), ("prod", "baci")])
-def test_cambiar_salidas_no_mueve_los_insumos(entorno, esquema):
-    config = cargar_configuracion(BACI_ENTORNO=entorno)
+def test_dev_usa_baci_dev_y_no_mueve_insumos():
+    config = cargar_configuracion(BACI_ENTORNO="dev")
+    esquema = "baci_dev"
     for clave in ("TABLA_COMERCIO", "TABLA_CONCENTRACION", "TABLA_ALTERNATIVAS"):
         assert config[clave].startswith(f"workspace.{esquema}.")
     assert str(config["BASE_RAW"]) == "/Volumes/workspace/baci/raw"
@@ -39,13 +39,17 @@ def test_entorno_invalido_falla_antes_de_acceder_a_datos(entorno):
 
 
 @pytest.mark.parametrize("notebook", sorted(NOTEBOOKS.glob("0[1-5]_*.py")), ids=lambda p: p.stem)
-@pytest.mark.parametrize("parametros,esquema", [({}, "baci_dev"), ({"entorno": "prod"}, "baci")])
+@pytest.mark.parametrize("parametros,esquema", [({}, "baci_dev"), ({"entorno": "dev"}, "baci_dev")])
 def test_cada_entrada_lee_el_parametro_antes_de_cargar_configuracion(notebook, parametros, esquema):
     # Simula el contrato de widgets: un parámetro de la tarea tiene prioridad
     # sobre el valor inicial del widget. La integración real se prueba en DB.
     valores = dict(parametros)
+    opciones_vistas = []
+    def dropdown(nombre, inicial, opciones, etiqueta):
+        opciones_vistas.append(opciones)
+        valores.setdefault(nombre, inicial)
     widgets = SimpleNamespace(
-        dropdown=lambda nombre, inicial, opciones, etiqueta: valores.setdefault(nombre, inicial),
+        dropdown=dropdown,
         get=lambda nombre: valores[nombre],
     )
     codigo_entrada = notebook.read_text(encoding="utf-8").split("# MAGIC %run ./00_configuracion")[0]
@@ -53,6 +57,7 @@ def test_cada_entrada_lee_el_parametro_antes_de_cargar_configuracion(notebook, p
     exec(compile(codigo_entrada, str(notebook), "exec"), contexto)
     config = cargar_configuracion(BACI_ENTORNO=contexto["BACI_ENTORNO"])
     assert config["ESQUEMA"] == esquema
+    assert opciones_vistas == [["dev"]]
 
 
 @pytest.fixture
@@ -68,10 +73,10 @@ def escritura():
     return spark, dataframe, sentencias, vistas, eliminadas
 
 
-@pytest.mark.parametrize("entorno,esquema", [("dev", "baci_dev"), ("prod", "baci")])
-def test_las_tres_escrituras_solo_usan_el_esquema_elegido(entorno, esquema, escritura):
+def test_las_tres_escrituras_solo_usan_dev(escritura):
     spark, dataframe, sentencias, vistas, eliminadas = escritura
-    config = cargar_configuracion(BACI_ENTORNO=entorno, spark=spark)
+    esquema = "baci_dev"
+    config = cargar_configuracion(BACI_ENTORNO="dev", spark=spark)
     for clave in ("TABLA_COMERCIO", "TABLA_CONCENTRACION", "TABLA_ALTERNATIVAS"):
         config["guardar_delta"](dataframe, config[clave])
     creaciones = [s for s in sentencias if s.startswith("CREATE OR REPLACE TABLE")]
@@ -81,14 +86,14 @@ def test_las_tres_escrituras_solo_usan_el_esquema_elegido(entorno, esquema, escr
     assert vistas == eliminadas
 
 
-@pytest.mark.parametrize("entorno,tabla", [
-    ("dev", "workspace.baci.comercio_enriquecido"),
-    ("dev", "workspace.baci_dev.otra_tabla"),
-    ("prod", "workspace.baci_dev.comercio_enriquecido"),
+@pytest.mark.parametrize("tabla", [
+    "workspace.baci.comercio_enriquecido",
+    "workspace.baci_dev.otra_tabla",
+    "workspace.baci.concentracion_importaciones_cr",
 ])
-def test_rechaza_tablas_fuera_del_entorno_sin_crear_vistas_o_esquemas(entorno, tabla, escritura):
+def test_rechaza_tablas_fuera_del_entorno_sin_crear_vistas_o_esquemas(tabla, escritura):
     spark, dataframe, sentencias, vistas, eliminadas = escritura
-    config = cargar_configuracion(BACI_ENTORNO=entorno, spark=spark)
+    config = cargar_configuracion(BACI_ENTORNO="dev", spark=spark)
     with pytest.raises(ValueError, match="fuera de las salidas"):
         config["guardar_delta"](dataframe, tabla)
     assert (sentencias, vistas, eliminadas) == ([], [], [])
@@ -156,9 +161,49 @@ def test_dev_rechaza_reextraccion_forzada(origen):
     assert all(p.read_bytes() == b"contenido de prueba\n" for p in rutas)
 
 
-def test_prod_conserva_la_extraccion_de_insumos(origen):
+def test_01_rechaza_prod_incluso_si_se_muta_entorno_despues_de_configuracion(origen):
     config, rutas = origen
     config["ENTORNO"] = "prod"
-    ejecutar_preparacion(config)
-    assert config["conteos"] == {"extraido": 11, "reutilizado": 0}
-    assert all(p.read_bytes() == b"contenido de prueba\n" for p in rutas)
+    with pytest.raises(ValueError, match="Extracción bloqueada"):
+        ejecutar_preparacion(config)
+    assert not rutas[0].parent.parent.exists()
+
+
+def test_rechaza_prod_antes_de_abrir_spark():
+    class SparkNoPermitido:
+        def __getattr__(self, nombre):
+            raise AssertionError("No se debe acceder a Spark al rechazar prod")
+
+    with pytest.raises(ValueError, match="Producción bloqueada"):
+        cargar_configuracion(BACI_ENTORNO="prod", spark=SparkNoPermitido())
+
+
+@pytest.mark.parametrize("campo,valor", [
+    ("ENTORNO", "prod"),
+    ("CATALOGO", "otro_catalogo"),
+    ("ESQUEMA", "baci"),
+])
+def test_guardar_delta_rechaza_desviaciones_sin_tocar_spark(campo, valor, escritura):
+    spark, dataframe, sentencias, vistas, eliminadas = escritura
+    config = cargar_configuracion(BACI_ENTORNO="dev", spark=spark)
+    config[campo] = valor
+    # Las funciones de runpy usan el diccionario original como globals.
+    # Cambiamos el global real del callable para simular una variable alterada.
+    globals_funcion = config["guardar_delta"].__globals__
+    anterior = globals_funcion[campo]
+    globals_funcion[campo] = valor
+    try:
+        with pytest.raises(ValueError, match="Escritura bloqueada"):
+            config["guardar_delta"](dataframe, config["TABLA_COMERCIO"])
+    finally:
+        globals_funcion[campo] = anterior
+    assert (sentencias, vistas, eliminadas) == ([], [], [])
+
+
+def test_guardar_delta_rechaza_salida_prod_aunque_se_cambie_el_nombre_permitido(escritura):
+    spark, dataframe, sentencias, vistas, eliminadas = escritura
+    config = cargar_configuracion(BACI_ENTORNO="dev", spark=spark)
+    config["TABLA_COMERCIO"] = "workspace.baci.comercio_enriquecido"
+    with pytest.raises(ValueError, match="fuera de las salidas"):
+        config["guardar_delta"](dataframe, config["TABLA_COMERCIO"])
+    assert (sentencias, vistas, eliminadas) == ([], [], [])
