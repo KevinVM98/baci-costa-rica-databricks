@@ -12,7 +12,9 @@
 # MAGIC
 # MAGIC **Cómo ejecutar:** para reconstruir las tablas, ejecutá 01, 02, 03 y 04 en orden con Serverless. Si ya existen, podés consultar 05 o validar con 04. El Job encadena las cuatro etapas. El README del paquete explica cómo desplegar una copia mediante Databricks CLI.
 # MAGIC
-# MAGIC **Escritura:** 02 reemplaza `workspace.baci.comercio_enriquecido`; 03 reemplaza las tablas de concentración y alternativas. Es una reconstrucción completa, no una carga incremental. Cambiar años y reconstruir sustituye el período guardado por el nuevo período seleccionado. Cada tabla se confirma por separado: no hay una transacción conjunta para todo el flujo. Los resultados se consumen después de que 04 termine correctamente.
+# MAGIC **Entornos:** el parámetro `entorno=dev` escribe y consulta las tres tablas en `workspace.baci_dev`. `entorno=prod` usa `workspace.baci`, donde consulta el dashboard. El valor inicial es `dev`. Los archivos de entrada se leen de `workspace.baci.raw` en ambos casos; desarrollo solo reutiliza los archivos ya preparados. El esquema de salida se crea al guardar la primera tabla si todavía no existe.
+# MAGIC
+# MAGIC **Escritura:** 02 reemplaza `comercio_enriquecido`; 03 reemplaza concentración y alternativas dentro del entorno seleccionado. Es una reconstrucción completa, no una carga incremental. Cambiar años y reconstruir sustituye el período guardado por el nuevo período seleccionado. Cada tabla se confirma por separado: no hay una transacción conjunta para todo el flujo. Los resultados se consumen después de que 04 termine correctamente.
 # MAGIC
 # MAGIC **Compute:** importar archivos no procesa los datos. Reconstruir 02 vuelve a leer y escribir los datos globales y consume la cuota de cómputo de Free Edition. Para consultas cotidianas, ejecutá 05 sobre las tablas existentes.
 # MAGIC
@@ -22,7 +24,7 @@
 # MAGIC
 # MAGIC **Conteos observados en las ejecuciones compartidas por el usuario:** comercio global 86.758.220 filas; indicadores 33.727 filas, 4.524 productos distintos y ocho años; 957 productos-año seleccionados, 2.871 alternativas y cuatro reglas de calidad sin errores. Si cambiás parámetros o insumos, estos conteos pueden cambiar.
 # MAGIC
-# MAGIC El usuario reconstruyó y validó las tablas con los notebooks organizados y completó el Job manual con estado Succeeded el 18 de noviembre de 2026, en 8 min 29 s. La configuración portátil de bundle añadida al paquete requiere su propia validación y ejecución con Databricks CLI. Ver README.md y docs/VALIDACION.md.
+# MAGIC El historial de ejecuciones observadas se conserva en `docs/VALIDACION.md`. La separación de entornos requiere su propia validación y ejecución con Databricks CLI; ver `docs/ENTORNOS.md`.
 # MAGIC
 # MAGIC Fuentes: [CEPII BACI](https://www.cepii.fr/CEPII/en/bdd_modele/bdd_modele_item.asp?id=37), [importación de notebooks](https://docs.databricks.com/aws/en/notebooks/notebook-export-import), [uso de %run](https://docs.databricks.com/aws/en/notebooks/notebook-workflows), [CREATE OR REPLACE TABLE](https://docs.databricks.com/aws/en/sql/language-manual/sql-ref-syntax-ddl-create-table-using).
 
@@ -31,10 +33,24 @@
 from pathlib import Path
 import re
 
-# Editá los parámetros aquí; todas las etapas leen esta configuración.
+# 01–05 leen el widget antes de %run y comparten esta variable de Python.
+# No creamos widgets aquí: %run puede usar los valores predeterminados del
+# notebook llamado en lugar de los parámetros recibidos por la tarea.
+# Ejecutar 00 por sí solo, en una sesión nueva, también elige desarrollo.
+ENTORNO = globals().get("BACI_ENTORNO", "dev")
+if ENTORNO not in ("dev", "prod"):
+    raise ValueError(f"Entorno inválido: {ENTORNO!r}. Usá 'dev' o 'prod'.")
+
+# Salidas derivadas. El entorno determina el esquema, no un nombre arbitrario.
 CATALOGO = "workspace"
-ESQUEMA = "baci"
+ESQUEMA = {"dev": "baci_dev", "prod": "baci"}[ENTORNO]
+
+# Insumos compartidos, independientes del esquema donde se escriben las tablas.
+CATALOGO_RAW = "workspace"
+ESQUEMA_RAW = "baci"
 VOLUMEN = "raw"
+
+# Editá los parámetros analíticos aquí; todas las etapas leen esta configuración.
 CLASIFICACION = "HS92"
 VERSION_BACI = "202501"
 ANIO_INICIAL = 2016
@@ -46,11 +62,11 @@ MINIMO_IMPORTACIONES_USD = 1_000_000
 TOP_ALTERNATIVAS = 3
 
 # False reutiliza archivos extraídos cuyo tamaño coincide con el ZIP.
-# True fuerza su extracción de nuevo desde el ZIP.
+# True fuerza su extracción de nuevo desde el ZIP, únicamente en prod.
 REEXTRAER = False
 
 # Validaciones de configuración, antes de leer o escribir datos.
-for nombre in [CATALOGO, ESQUEMA, VOLUMEN]:
+for nombre in [CATALOGO, ESQUEMA, CATALOGO_RAW, ESQUEMA_RAW, VOLUMEN]:
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", nombre):
         raise ValueError(f"Nombre de catálogo, esquema o volumen inválido: {nombre}")
 if CLASIFICACION != "HS92" or VERSION_BACI != "202501":
@@ -65,7 +81,7 @@ if not isinstance(TOP_ALTERNATIVAS, int) or TOP_ALTERNATIVAS < 1:
     raise ValueError("TOP_ALTERNATIVAS debe ser un entero positivo.")
 
 ANIOS = list(range(ANIO_INICIAL, ANIO_FINAL + 1))
-BASE_RAW = Path(f"/Volumes/{CATALOGO}/{ESQUEMA}/{VOLUMEN}")
+BASE_RAW = Path(f"/Volumes/{CATALOGO_RAW}/{ESQUEMA_RAW}/{VOLUMEN}")
 RUTA_ZIP = BASE_RAW / f"BACI_{CLASIFICACION}_V{VERSION_BACI}.zip"
 CARPETA_TRADE = BASE_RAW / "trade"
 CARPETA_REFERENCE = BASE_RAW / "reference"
@@ -89,6 +105,7 @@ def guardar_delta(dataframe, tabla):
     permitidas = {TABLA_COMERCIO, TABLA_CONCENTRACION, TABLA_ALTERNATIVAS}
     if tabla not in permitidas:
         raise ValueError(f"Tabla fuera de las salidas del proyecto: {tabla}")
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOGO}.{ESQUEMA}").collect()
     vista = "__baci_salida_" + tabla.split(".")[-1]
     dataframe.createOrReplaceTempView(vista)
     try:
@@ -108,5 +125,7 @@ def comprobar_ceros(resultados):
         raise ValueError("Validación fallida: revisar las reglas con errores.")
 
 
+print(f"Entorno: {ENTORNO} | Tablas: {CATALOGO}.{ESQUEMA}")
+print(f"Archivos de entrada: {BASE_RAW}")
 print(f"Configuración: {CLASIFICACION} V{VERSION_BACI}, {ANIO_INICIAL}–{ANIO_FINAL}")
 

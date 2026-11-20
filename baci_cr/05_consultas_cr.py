@@ -8,6 +8,12 @@
 # MAGIC El resumen anual suma la tabla de concentración, que tiene una fila por producto y año. Así evita multiplicar las importaciones por la cantidad de alternativas.
 
 # COMMAND ----------
+
+# Leer el parámetro en la tarea antes de cargar la configuración compartida.
+dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+BACI_ENTORNO = dbutils.widgets.get("entorno")
+
+# COMMAND ----------
 # MAGIC %run ./00_configuracion
 
 # COMMAND ----------

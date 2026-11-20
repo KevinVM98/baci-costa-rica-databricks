@@ -4,6 +4,14 @@
 # MAGIC Lee el ZIP ya subido al volumen y extrae únicamente los años configurados y los catálogos. La extracción usa Python en el entorno remoto de Databricks y copia por bloques; no carga el ZIP completo en memoria.
 # MAGIC
 # MAGIC Si un archivo ya existe y su tamaño coincide con el registrado en el ZIP, se reutiliza. Esta comprobación de reutilización es por tamaño, no una verificación criptográfica. La opción `REEXTRAER` de 00 permite extraerlo de nuevo.
+# MAGIC
+# MAGIC En `dev` esta etapa solo comprueba y reutiliza los archivos compartidos; no los extrae ni reemplaza. Si falta alguno, prepará los insumos ejecutando únicamente 01 con `entorno=prod` y después volvé a `dev`.
+
+# COMMAND ----------
+
+# Leer el parámetro en la tarea antes de cargar la configuración compartida.
+dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+BACI_ENTORNO = dbutils.widgets.get("entorno")
 
 # COMMAND ----------
 # MAGIC %run ./00_configuracion
@@ -13,6 +21,9 @@
 import shutil
 import zipfile
 
+if ENTORNO == "dev" and REEXTRAER:
+    raise ValueError("REEXTRAER no se permite en dev: los insumos son de solo lectura.")
+
 
 def extraer_si_necesario(zip_abierto, nombre, destino):
     """Extraer una entrada elegida explícitamente, sin usar rutas del ZIP."""
@@ -21,6 +32,12 @@ def extraer_si_necesario(zip_abierto, nombre, destino):
     if not REEXTRAER and destino.is_file() and destino.stat().st_size == entrada.file_size:
         print(f"Ya disponible: {destino.name}")
         return "reutilizado"
+    if ENTORNO == "dev":
+        raise ValueError(
+            f"Insumo ausente o con tamaño distinto al ZIP: {destino}. "
+            "dev no modifica los archivos compartidos. Prepará los insumos "
+            "con 01_archivos_raw y entorno=prod antes de ejecutar dev."
+        )
     destino.parent.mkdir(parents=True, exist_ok=True)
     try:
         with zip_abierto.open(entrada) as origen, destino.open("wb") as salida:
@@ -58,5 +75,5 @@ with zipfile.ZipFile(RUTA_ZIP) as archivo_zip:
 
 print(f"Archivos extraídos: {conteos['extraido']}")
 print(f"Archivos reutilizados: {conteos['reutilizado']}")
-print("Siguiente etapa: 02_comercio_enriquecido")
+print(f"Siguiente etapa: 02_comercio_enriquecido, con entorno={ENTORNO}")
 

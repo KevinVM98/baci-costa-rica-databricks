@@ -5,8 +5,14 @@ resources:
     baci_cr_pipeline:
       name: baci_cr_pipeline
 
-      # La reconstrucción escribe tablas compartidas: una ejecución por Job.
+      # Una ejecución simultánea de este Job; no limita otros Jobs.
       max_concurrent_runs: 1
+
+      # Databricks entrega el parámetro a cada tarea de notebook.
+      # El target dev escribe en baci_dev; no cambia las tablas del dashboard.
+      parameters:
+        - name: entorno
+          default: ${bundle.target}
 
       tasks:
         - task_key: 01_archivos_raw

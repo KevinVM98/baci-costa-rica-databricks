@@ -8,6 +8,12 @@
 # MAGIC Un caso puede tener menos candidatos que el máximo configurado; las posiciones deben ser consecutivas desde 1. La cobertura de candidatos se informa al final. Estas reglas no comprueban, por sí solas, exactitud económica ni disponibilidad de suministro.
 
 # COMMAND ----------
+
+# Leer el parámetro en la tarea antes de cargar la configuración compartida.
+dbutils.widgets.dropdown("entorno", "dev", ["dev", "prod"], "Entorno de datos")
+BACI_ENTORNO = dbutils.widgets.get("entorno")
+
+# COMMAND ----------
 # MAGIC %run ./00_configuracion
 
 # COMMAND ----------
