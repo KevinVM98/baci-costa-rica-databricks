@@ -7,7 +7,7 @@ de entrada y las escrituras Delta permanecen en los notebooks.
 
 ## Cobertura
 
-La suite contiene 68 casos: 30 de catálogos y transformaciones, 29 de entornos y 9 de comparación dev/prod.
+La suite contiene 76 casos: 30 de catálogos y transformaciones, 37 de entornos (incluidos bloqueos dev-only) y 9 de comparación dev/prod.
 Los flujos e importes de prueba son sintéticos;
 no constituyen nuevos resultados económicos. Los cuatro nombres con
 codificación dañada reproducen el problema observado en el catálogo BACI.
@@ -32,7 +32,7 @@ El archivo `.github/workflows/tests.yml` ejecuta **Pruebas BACI** después de ca
 2. Seleccionar la ejecución **Pruebas BACI** correspondiente al commit.
 3. Abrir **Python y PySpark** y revisar el paso **Ejecutar pruebas**.
 
-El resultado esperado es `68 passed` y estado verde. Los registros de Actions
+El resultado esperado es `76 passed` y estado verde. Los registros de Actions
 son la evidencia de cada ejecución y se vinculan al commit comprobado.
 
 GitHub prepara un ejecutor Ubuntu con Python 3.12 y Java 21. Las dependencias
