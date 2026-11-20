@@ -12,27 +12,31 @@ La configuración actual separa las tablas de desarrollo (`workspace.baci_dev`) 
 |---|---|
 | `databricks.yml` | Define el bundle, el destino `dev` y la carpeta de despliegue del usuario autenticado. |
 | `resources/baci_cr_pipeline.job.yml` | Define las cuatro tareas del Job, sus dependencias y su configuración. |
+| `resources/baci_cr_auditoria.job.yml` | Job separado para comparar desarrollo y producción sin reconstruir tablas. |
 | `baci_cr/00_configuracion.py` | Contiene período, edición, rutas y filtros analíticos compartidos. |
 | `baci_cr/01_archivos_raw.py` | Extrae del ZIP los archivos seleccionados o reutiliza las copias existentes. |
 | `baci_cr/02_comercio_enriquecido.py` | Lee los CSV, valida los catálogos, realiza las uniones y guarda el comercio global. |
 | `baci_cr/03_indicadores_cr.py` | Calcula la concentración de importaciones de CR y los países alternativos. |
 | `baci_cr/04_validaciones.py` | Comprueba cobertura y coherencia de las tablas analíticas. |
 | `baci_cr/05_consultas_cr.py` | Consulta el resumen anual, productos seleccionados, evolución y alternativas. |
+| `baci_cr/06_comparar_entornos.py` | Auditoría de solo lectura de las dos tablas analíticas de dev y prod. |
 | `baci_cr/catalogos.py` | Función compartida para reparar los nombres de países. |
 | `baci_cr/transformaciones.py` | Funciones PySpark de enriquecimiento, concentración y alternativas. |
+| `baci_cr/comparacion.py` | Comparación de DataFrames en ambos sentidos, conservando duplicados. |
 | `tests/` | Pruebas de las funciones con ejemplos pequeños y resultados conocidos. |
 | `.github/workflows/tests.yml` | Ejecuta las pruebas automáticamente en GitHub Actions. |
 | `docs/PRUEBAS.md` | Explica la cobertura de las pruebas, CI y la comprobación en Databricks. |
 | `docs/ENTORNOS.md` | Explica la separación de tablas, los insumos compartidos y cómo verificarla. |
+| `docs/AUDITORIA.md` | Cómo ejecutar e interpretar la comparación entre dev y prod. |
 | `docs/VALIDACION.md` | Registra las evidencias observadas y el alcance de la revisión local. |
 
 Los archivos numerados `00`–`05` conservan el formato de notebook fuente de Databricks. El procesamiento de los datos BACI se ejecuta en Databricks; no se ejecutan estos notebooks con `python archivo.py` en la computadora personal. `catalogos.py` y `transformaciones.py` son módulos Python normales que deben mantenerse junto a los notebooks y desplegarse con el bundle.
 
 ## Pruebas automáticas
 
-La suite incluye 59 casos: 30 para nombres y transformaciones PySpark, y 29 para la configuración de entornos, el destino de las escrituras y la lectura de insumos en desarrollo. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
+La suite incluye 68 casos: 30 para nombres y transformaciones PySpark, 29 para la configuración de entornos y 9 para comparar datos entre desarrollo y producción con Spark local. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
 
-El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `59 passed`.
+El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `68 passed`.
 
 Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La integración completa se comprueba al desplegar y ejecutar el Job en Databricks. [Consultar las instrucciones de pruebas](docs/PRUEBAS.md).
 
@@ -45,7 +49,17 @@ Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La i
 | `03_indicadores_cr` | `02_comercio_enriquecido` | Tablas `concentracion_importaciones_cr` y `alternativas_importaciones_cr`. |
 | `04_validaciones` | `03_indicadores_cr` | Controles y resumen de cobertura. |
 
-Las tareas posteriores usan `ALL_SUCCESS`. Cada notebook lee el parámetro `entorno` y después carga `00_configuracion` con `%run ./00_configuracion`; por eso los seis notebooks se mantienen juntos. `05_consultas_cr` se usa para explorar los resultados y no es una tarea del Job. Sin un parámetro explícito se utiliza `dev`.
+Las tareas posteriores usan `ALL_SUCCESS`. Los notebooks `01`–`05` leen el parámetro `entorno` y después cargan `00_configuracion` con `%run ./00_configuracion`. `05_consultas_cr` sirve para explorar resultados. `06_comparar_entornos` es una auditoría independiente de solo lectura, que compara las tablas analíticas dev y prod sin volver a procesar comercio global. Sin un parámetro explícito se utiliza `dev` en las etapas que lo necesitan.
+
+## Auditoría de resultados entre dev y prod
+
+Después de reconstruir desarrollo, se pueden comparar los resultados de las dos tablas analíticas con producción sin ejecutar las etapas 01–04. Para ello se despliega el Job independiente y se ejecuta:
+
+```powershell
+databricks bundle run -t dev -p BACI baci_cr_auditoria
+```
+
+Primero ejecutá `databricks bundle validate -t dev -p BACI` y `databricks bundle deploy -t dev -p BACI` para publicar la configuración nueva del Job. El control compara valores, esquema y duplicados en ambas direcciones, sin modificar tablas y sin leer el comercio global. Por defecto falla ante divergencias, incluso si ambos conteos son iguales. [Más detalles y límites de la auditoría](docs/AUDITORIA.md).
 
 ## Datos y preparación del workspace
 

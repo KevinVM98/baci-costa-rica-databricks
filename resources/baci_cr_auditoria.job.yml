@@ -1,0 +1,14 @@
+# Auditoría independiente, de solo lectura.
+# No depende del Job de reconstrucción y no escribe tablas Delta.
+resources:
+  jobs:
+    baci_cr_auditoria:
+      name: baci_cr_auditoria
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: 06_comparar_entornos
+          notebook_task:
+            notebook_path: ../baci_cr/06_comparar_entornos.py
+            source: WORKSPACE
+      queue:
+        enabled: true
