@@ -1,0 +1,48 @@
+name: Pruebas BACI
+
+"on":
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: baci-tests-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python y PySpark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      SPARK_LOCAL_IP: 127.0.0.1
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Preparar Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Preparar Java para Spark
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Instalar dependencias de pruebas
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Comprobar sintaxis de notebooks, módulos y pruebas
+        run: python -m compileall -q baci_cr tests
+
+      - name: Ejecutar pruebas
+        run: python -m pytest -q

@@ -1,0 +1,3 @@
+# Entorno de pruebas local y de GitHub Actions; no instalar en Databricks.
+pytest==8.4.2
+pyspark==4.0.1

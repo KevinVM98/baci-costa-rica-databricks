@@ -15,6 +15,9 @@
 from functools import reduce
 from pyspark.sql import functions as F
 
+from catalogos import normalizar_nombre_pais
+from transformaciones import enriquecer_comercio
+
 faltantes = [ruta for ruta in RUTAS_TRADE + [RUTA_PAISES, RUTA_PRODUCTOS] if not Path(ruta).is_file()]
 if faltantes:
     raise FileNotFoundError(f"Ejecutá 01 primero. Faltan archivos: {faltantes}")
@@ -52,43 +55,6 @@ if any(fila["filas_incompletas"] or fila["codigos_invalidos"] for fila in resume
 df_comercio = df_comercio.withColumn("k", F.lpad(F.trim(F.col("k")), 6, "0"))
 
 # COMMAND ----------
-
-def normalizar_nombre_pais(nombre):
-    """Revertir una capa reconocible de UTF-8 interpretado como Latin-1."""
-    import re
-
-    if nombre is None:
-        return None
-    if "\ufffd" in nombre:
-        raise ValueError(
-            f"El nombre contiene un carácter de reemplazo y requiere revisión: {nombre!r}"
-        )
-
-    # Secuencias de bytes UTF-8 representadas erróneamente como caracteres Latin-1.
-    # Una tilde válida aislada (por ejemplo, ü en Türkiye) no coincide con ellas.
-    patron = (
-        r"[\u00c2-\u00df][\u0080-\u00bf]"
-        r"|[\u00e0-\u00ef][\u0080-\u00bf]{2}"
-        r"|[\u00f0-\u00f4][\u0080-\u00bf]{3}"
-    )
-    if not re.search(patron, nombre):
-        return nombre
-
-    try:
-        corregido = nombre.encode("latin-1", errors="strict").decode(
-            "utf-8", errors="strict"
-        )
-    except UnicodeError as error:
-        raise ValueError(
-            f"No se pudo reparar el nombre sin pérdida de caracteres: {nombre!r}"
-        ) from error
-
-    if "\ufffd" in corregido or re.search(patron, corregido):
-        raise ValueError(
-            f"El nombre sigue mostrando codificación dañada y requiere revisión: {nombre!r}"
-        )
-    return corregido
-
 
 opciones_catalogos = {
     "header": "true", "escape": '"', "multiLine": "true",
@@ -158,32 +124,10 @@ comprobar_ceros({
     "paises_con_nombres_sin_normalizar": nombres_sin_normalizar,
 })
 
-df_exportadores = df_paises.select(
-    F.col("country_code").alias("i"), F.col("country_name").alias("exportador")
-)
-df_importadores = df_paises.select(
-    F.col("country_code").alias("j"), F.col("country_name").alias("importador")
-)
-df_descripciones = df_productos.select(
-    F.col("code").alias("k"), F.col("description").alias("producto")
-)
-
-df_enriquecido = (
-    df_comercio
-    .join(F.broadcast(df_exportadores), "i", "left")
-    .join(F.broadcast(df_importadores), "j", "left")
-    .join(F.broadcast(df_descripciones), "k", "left")
-    .select(
-        F.col("t").alias("anio"),
-        F.col("i").alias("codigo_exportador"), "exportador",
-        F.col("j").alias("codigo_importador"), "importador",
-        F.col("k").alias("codigo_producto"), "producto",
-        F.col("v").alias("valor_miles_usd"),
-        (F.col("v") * F.lit(1000)).alias("valor_usd"),
-        F.col("q").alias("toneladas"),
-        F.lit(CLASIFICACION).alias("clasificacion"),
-        F.lit(VERSION_BACI).alias("version_baci")
-    )
+# La función compartida también se ejecuta en las pruebas automáticas.
+df_enriquecido = enriquecer_comercio(
+    df_comercio, df_paises, df_productos,
+    clasificacion=CLASIFICACION, version_baci=VERSION_BACI
 )
 
 # Validar el enriquecimiento antes de publicar la tabla.
@@ -205,4 +149,3 @@ if total_guardado != total_origen:
     raise ValueError(f"Conteo guardado inesperado: {total_guardado}, origen: {total_origen}")
 print(f"Filas almacenadas: {total_guardado}")
 print("Siguiente etapa: 03_indicadores_cr")
-
