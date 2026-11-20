@@ -207,3 +207,20 @@ def test_guardar_delta_rechaza_salida_prod_aunque_se_cambie_el_nombre_permitido(
     with pytest.raises(ValueError, match="fuera de las salidas"):
         config["guardar_delta"](dataframe, config["TABLA_COMERCIO"])
     assert (sentencias, vistas, eliminadas) == ([], [], [])
+
+
+@pytest.mark.parametrize("notebook", sorted(NOTEBOOKS.glob("0[1-5]_*.py")), ids=lambda p: p.stem)
+def test_override_prod_en_parametro_del_job_se_rechaza_en_todos_los_notebooks(notebook):
+    # Simula un override externo, incluso cuando el widget solo ofrece dev.
+    widgets = SimpleNamespace(
+        dropdown=lambda nombre, inicial, opciones, etiqueta: None,
+        get=lambda nombre: "prod",
+    )
+    codigo_entrada = notebook.read_text(encoding="utf-8").split(
+        "# MAGIC %run ./00_configuracion"
+    )[0]
+    contexto = {"dbutils": SimpleNamespace(widgets=widgets)}
+    exec(compile(codigo_entrada, str(notebook), "exec"), contexto)
+    assert contexto["BACI_ENTORNO"] == "prod"
+    with pytest.raises(ValueError, match="Producción bloqueada"):
+        cargar_configuracion(BACI_ENTORNO=contexto["BACI_ENTORNO"])
