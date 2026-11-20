@@ -56,3 +56,19 @@ La ejecución del bundle reutilizó el workspace del proyecto, con catálogo, es
 Los comandos remotos se ejecutaron en la computadora y el workspace del usuario. La revisión de los archivos y su empaquetado se realizó por separado en el entorno local de preparación. Esta actualización cambia únicamente `README.md` y `docs/VALIDACION.md`.
 
 Las reglas de datos del notebook 04 cubren la coherencia implementada; no garantizan por sí solas calidad económica completa ni disponibilidad comercial de los países candidatos.
+
+## Auditoría DEV y PROD — 20 de noviembre de 2026
+
+Tras fusionar el [PR #3](https://github.com/KevinVM98/baci-costa-rica-databricks/pull/3), el usuario clonó `main`, validó el bundle con el perfil `BACI`, lo desplegó y ejecutó el Job independiente `baci_cr_auditoria`. La CLI devolvió `TERMINATED SUCCESS`; la captura compartida de la salida de `06_comparar_entornos` confirmó los siguientes resultados:
+
+| Tabla analítica | Filas exclusivas de DEV | Filas exclusivas de PROD | Resultado |
+|---|---:|---:|---|
+| `concentracion_importaciones_cr` | 0 | 0 | `IGUAL` |
+| `alternativas_importaciones_cr` | 0 | 0 | `IGUAL` |
+
+- `databricks bundle validate -t dev -p BACI`: `Validation OK!`.
+- `databricks bundle deploy -t dev -p BACI`: 30 archivos subidos, Job `baci_cr_auditoria` creado; 1 recurso sin cambios.
+- `databricks bundle run -t dev -p BACI baci_cr_auditoria`: `RUNNING` a las 09:08:36 y `TERMINATED SUCCESS` a las 09:09:18 (hora de Costa Rica).
+- [Ejecución del Job en Databricks](https://dbc-af94ac3b-ce7b.cloud.databricks.com/jobs/198199510849501/runs/565506643455754?o=7474655894338174). El enlace puede requerir acceso al workspace.
+
+La comparación utiliza `EXCEPT ALL` en ambas direcciones y comprueba también igualdad de esquemas; por tanto, no solo compara conteos. Este resultado confirma igualdad de las **dos tablas analíticas** observadas, no de la tabla global `comercio_enriquecido` de 86.758.220 filas. El Job de auditoría solo lee tablas y no reconstruye ni publica datos. La captura se compartió en la conversación, pero **no está incluida como archivo en este repositorio**.
