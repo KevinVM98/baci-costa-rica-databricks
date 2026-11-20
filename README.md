@@ -16,9 +16,22 @@ El Job configurado en la interfaz terminó con estado **Succeeded** el **18 de n
 | `baci_cr/03_indicadores_cr.py` | Calcula la concentración de importaciones de CR y los países alternativos. |
 | `baci_cr/04_validaciones.py` | Comprueba cobertura y coherencia de las tablas analíticas. |
 | `baci_cr/05_consultas_cr.py` | Consulta el resumen anual, productos seleccionados, evolución y alternativas. |
+| `baci_cr/catalogos.py` | Función compartida para reparar los nombres de países. |
+| `baci_cr/transformaciones.py` | Funciones PySpark de enriquecimiento, concentración y alternativas. |
+| `tests/` | Pruebas de las funciones con ejemplos pequeños y resultados conocidos. |
+| `.github/workflows/tests.yml` | Ejecuta las pruebas automáticamente en GitHub Actions. |
+| `docs/PRUEBAS.md` | Explica la cobertura de las pruebas, CI y la comprobación en Databricks. |
 | `docs/VALIDACION.md` | Registra las evidencias observadas y el alcance de la revisión local. |
 
-Los `.py` conservan el formato de notebook fuente de Databricks. El procesamiento con Spark se ejecuta en Databricks; no se ejecutan estos notebooks con `python archivo.py` en la computadora personal.
+Los archivos numerados `00`–`05` conservan el formato de notebook fuente de Databricks. El procesamiento de los datos BACI se ejecuta en Databricks; no se ejecutan estos notebooks con `python archivo.py` en la computadora personal. `catalogos.py` y `transformaciones.py` son módulos Python normales que deben mantenerse junto a los notebooks y desplegarse con el bundle.
+
+## Pruebas automáticas
+
+La suite incluye 30 casos con pytest y PySpark: corrección de nombres, conversión a USD, concentración, umbrales inclusivos, desempates y exclusiones del ranking. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
+
+El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `30 passed`.
+
+Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La integración completa se comprueba al desplegar y ejecutar el Job en Databricks. [Consultar las instrucciones de pruebas](docs/PRUEBAS.md).
 
 ## Orden de ejecución
 
