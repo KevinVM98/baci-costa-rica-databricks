@@ -34,9 +34,9 @@ Los archivos numerados `00`–`05` conservan el formato de notebook fuente de Da
 
 ## Pruebas automáticas
 
-La suite incluye 68 casos: 30 para nombres y transformaciones PySpark, 29 para la configuración de entornos y 9 para comparar datos entre desarrollo y producción con Spark local. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
+La suite incluye 76 casos: 30 para nombres y transformaciones PySpark, 37 para la configuración y protección de entornos y 9 para comparar datos entre desarrollo y producción con Spark local. Los notebooks `02` y `03` importan las mismas funciones que verifican las pruebas.
 
-El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `68 passed`.
+El workflow **Pruebas BACI** se ejecuta en cada `push` y `pull_request`, y también puede iniciarse manualmente desde GitHub Actions. Usa Python 3.12, Java 21, pytest 8.4.2 y PySpark 4.0.1 con datos sintéticos; no necesita credenciales ni cómputo de Databricks. El resultado esperado es `76 passed`.
 
 Las pruebas complementan a `04_validaciones`, que revisa las tablas reales. La integración completa se comprueba al desplegar y ejecutar el Job en Databricks. [Consultar las instrucciones de pruebas](docs/PRUEBAS.md).
 
