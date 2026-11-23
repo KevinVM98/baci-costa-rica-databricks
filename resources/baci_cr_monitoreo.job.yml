@@ -1,0 +1,20 @@
+resources:
+  jobs:
+    baci_cr_monitoreo:
+      name: baci_cr_monitoreo
+      max_concurrent_runs: 1
+      parameters:
+        - name: entorno
+          default: ${bundle.target}
+      tasks:
+        - task_key: 07_monitoreo_calidad
+          notebook_task:
+            notebook_path: ../baci_cr/07_monitoreo_calidad.py
+            source: WORKSPACE
+            base_parameters:
+              job_id: "{{job.id}}"
+              job_run_id: "{{job.run_id}}"
+              task_run_id: "{{task.run_id}}"
+              intento: "{{task.execution_count}}"
+      queue:
+        enabled: true

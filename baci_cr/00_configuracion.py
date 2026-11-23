@@ -104,6 +104,18 @@ TABLA_CONCENTRACION = f"{CATALOGO}.{ESQUEMA}.concentracion_importaciones_cr"
 TABLA_ALTERNATIVAS = f"{CATALOGO}.{ESQUEMA}.alternativas_importaciones_cr"
 CLAVES = ["anio", "codigo_producto", "clasificacion", "version_baci"]
 
+# Las etapas 04 y 07 usan exactamente las mismas reglas y parámetros.
+PARAMETROS_CALIDAD = {
+    "claves": CLAVES,
+    "anios": ANIOS,
+    "clasificacion": CLASIFICACION,
+    "version_baci": VERSION_BACI,
+    "top_alternativas": TOP_ALTERNATIVAS,
+    "codigo_cr": CODIGO_CR,
+    "umbral_concentracion_pct": UMBRAL_CONCENTRACION_PCT,
+    "minimo_importaciones_usd": MINIMO_IMPORTACIONES_USD,
+}
+
 
 def guardar_delta(dataframe, tabla):
     """Reemplazar una tabla derivada sin acumular filas al repetir el proceso."""
